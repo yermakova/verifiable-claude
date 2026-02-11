@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifiable Claude - Fraud Proofs for LLMs</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0F0F0F;
+        }
+    </style>
+</head>
+<body class="bg-[#0F0F0F]">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+        
+        const API_BASE_URL = 'http://localhost:3001';
+        
+        const Shield = () => (
+            <svg className="w-12 h-12 text-[#CC785C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+        );
+
+        const VerifiableClaudeDemo = () => {
+            const [prompt, setPrompt] = useState('');
+            const [response, setResponse] = useState(null);
+            const [selectedClaim, setSelectedClaim] = useState(null);
+            const [verification, setVerification] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [verifying, setVerifying] = useState(false);
+            const [error, setError] = useState(null);
+            const [backendStatus, setBackendStatus] = useState('checking');
+
+            React.useEffect(() => {
+                checkBackend();
+            }, []);
+
+            const checkBackend = async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/health`);
+                    if (response.ok) {
+                        setBackendStatus('connected');
+                    } else {
+                        setBackendStatus('error');
+                    }
+                } catch (err) {
+                    setBackendStatus('offline');
+                }
+            };
+
+            const callGenerateAPI = async (userPrompt) => {
+                const response = await fetch(`${API_BASE_URL}/api/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt: userPrompt })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to generate response');
+                }
+
+                const data = await response.json();
+                return data.data;
+            };
+
+            const callVerifyAPI = async (claim, context = {}) => {
+                const response = await fetch(`${API_BASE_URL}/api/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ claim, context })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to verify claim');
+                }
+
+                const data = await response.json();
+                return data.data;
+            };
+
+            const handleGenerate = async () => {
+                if (!prompt.trim()) return;
+                
+                setLoading(true);
+                setResponse(null);
+                setVerification(null);
+                setSelectedClaim(null);
+                setError(null);
+                
+                try {
+                    const result = await callGenerateAPI(prompt);
+                    setResponse(result);
+                } catch (err) {
+                    console.error('Generate error:', err);
+                    setError('Failed to generate response. Make sure backend is running on port 3001.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleVerifyClaim = async (claim) => {
+                setSelectedClaim(claim);
+                setVerifying(true);
+                setVerification(null);
+                setError(null);
+                
+                try {
+                    const result = await callVerifyAPI(claim, {});
+                    setVerification(result);
+                } catch (err) {
+                    console.error('Verify error:', err);
+                    setError('Failed to verify claim. Check your backend logs.');
+                } finally {
+                    setVerifying(false);
+                }
+            };
+
+            const getVerdictStyle = (verdict) => {
+                if (verdict === 'VERIFIED') return 'text-green-400 bg-green-950/30 border-green-800';
+                if (verdict === 'FALSE') return 'text-red-400 bg-red-950/30 border-red-800';
+                return 'text-yellow-400 bg-yellow-950/30 border-yellow-800';
+            };
+
+            const renderFormattedText = (text) => {
+                return text.split('\n').map((line, i) => {
+                    // Headers (## Header)
+                    if (line.startsWith('## ')) {
+                        return <h3 key={i} className="text-lg font-bold text-gray-100 mt-4 mb-2">{line.substring(3)}</h3>;
+                    }
+
+                    // List items (- Item)
+                    if (line.trim().startsWith('- ')) {
+                        const content = line.trim().substring(2);
+                        const parts = content.split(/(\*\*.*?\*\*)/g);
+                        return (
+                            <div key={i} className="ml-4 text-gray-300 mb-1">
+                                • {parts.map((part, k) => {
+                                    if (part.startsWith('**') && part.endsWith('**')) {
+                                        return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+                                    }
+                                    return part;
+                                })}
+                            </div>
+                        );
+                    }
+
+                    // Regular text with **bold**
+                    if (line.trim()) {
+                        const parts = line.split(/(\*\*.*?\*\*)/g);
+                        return (
+                            <div key={i} className="text-gray-300 mb-1">
+                                {parts.map((part, k) => {
+                                    if (part.startsWith('**') && part.endsWith('**')) {
+                                        return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+                                    }
+                                    return part;
+                                })}
+                            </div>
+                        );
+                    }
+
+                    // Empty line
+                    return <div key={i} className="h-2"></div>;
+                });
+            };
+
+            return (
+                <div className="min-h-screen bg-[#0F0F0F] p-8">
+                    <div className="max-w-5xl mx-auto">
+                        <div className="mb-4">
+                            {backendStatus === 'offline' && (
+                                <div className="bg-red-950/30 border border-red-800 rounded-lg p-3 text-sm text-red-400">
+                                    ⚠️ Backend offline. Run: <code className="bg-red-950/50 px-2 py-1 rounded">npm start</code> in backend folder
+                                </div>
+                            )}
+                            {backendStatus === 'connected' && (
+                                <div className="bg-green-950/30 border border-green-800 rounded-lg p-3 text-sm text-green-400 text-center">
+                                    ✓ Connected to {API_BASE_URL}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="text-center mb-12">
+                            <div className="flex items-center justify-center gap-3 mb-4">
+                                <Shield />
+                                <h1 className="text-5xl font-bold bg-gradient-to-r from-[#CC785C] to-[#D97757] bg-clip-text text-transparent">
+                                    Verifiable Claude
+                                </h1>
+                            </div>
+                            <p className="text-xl text-gray-300 mb-2">Fraud Proofs for LLM Outputs</p>
+                            <p className="text-sm text-gray-400 max-w-2xl mx-auto">
+                                Inspired by Optimistic Rollups: Claims verified against external sources.
+                                Like blockchain brought verification to computation, this brings verification to AI.
+                            </p>
+                        </div>
+
+                        {error && (
+                            <div className="mb-6 bg-red-950/30 border border-red-800 rounded-lg p-4 text-red-400">
+                                {error}
+                            </div>
+                        )}
+
+                        <div className="bg-[#1E1E1E] rounded-xl shadow-lg border border-[#3D3D3D] p-6 mb-8">
+                            <label className="block text-sm font-semibold text-gray-200 mb-3">
+                                Ask Claude anything with verifiable facts:
+                            </label>
+                            <div className="flex gap-3">
+                                <input
+                                    type="text"
+                                    value={prompt}
+                                    onChange={(e) => setPrompt(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleGenerate()}
+                                    placeholder="e.g., Tell me about Apollo 11"
+                                    className="flex-1 px-4 py-3 bg-[#2D2D2D] border border-[#404040] text-gray-100 placeholder-gray-500 rounded-lg focus:ring-2 focus:ring-[#CC785C] focus:border-transparent"
+                                    disabled={backendStatus !== 'connected'}
+                                />
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={loading || !prompt.trim() || backendStatus !== 'connected'}
+                                    className="px-6 py-3 bg-[#CC785C] text-white rounded-lg font-semibold hover:bg-[#D97757] disabled:opacity-50 transition"
+                                >
+                                    {loading ? 'Generating...' : 'Generate'}
+                                </button>
+                            </div>
+                            <div className="mt-4 flex gap-2 flex-wrap">
+                                <span className="text-xs text-gray-400">Try:</span>
+                                {['Tell me about Apollo 11', 'When was the Eiffel Tower built?'].map(ex => (
+                                    <button
+                                        key={ex}
+                                        onClick={() => setPrompt(ex)}
+                                        className="text-xs px-3 py-1 bg-[#2D2D2D] hover:bg-[#3D3D3D] text-gray-300 border border-[#404040] rounded-full"
+                                    >
+                                        {ex}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {response && (
+                            <div className="bg-[#1E1E1E] rounded-xl shadow-lg border border-[#3D3D3D] p-6 mb-8">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <h2 className="text-xl font-bold text-gray-100">Response with Verifiable Claims</h2>
+                                    <span className="text-sm px-3 py-1 bg-[#CC785C]/20 text-[#CC785C] border border-[#CC785C]/30 rounded-full">
+                                        {response.claims.length} claims
+                                    </span>
+                                </div>
+
+                                <div className="mb-6 p-4 bg-[#2D2D2D] border border-[#404040] rounded-lg">
+                                    {renderFormattedText(response.text)}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="font-semibold text-sm mb-3 text-gray-200">Click to verify:</h3>
+                                    {response.claims.map(claim => (
+                                        <button
+                                            key={claim.id}
+                                            onClick={() => handleVerifyClaim(claim)}
+                                            className={`w-full text-left p-4 rounded-lg border-2 transition ${
+                                                selectedClaim?.id === claim.id
+                                                    ? 'border-[#CC785C] bg-[#CC785C]/10'
+                                                    : 'border-[#404040] hover:border-[#CC785C]/50 bg-[#2D2D2D]'
+                                            }`}
+                                        >
+                                            <div className="font-medium text-gray-100">{claim.text}</div>
+                                            <div className="text-sm text-gray-400 mt-1">
+                                                {claim.type || 'unknown'} •
+                                                {selectedClaim?.id === claim.id && verification
+                                                    ? ` ${verification.verdict} (${verification.confidence}%)`
+                                                    : ' Click to verify'}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedClaim && (
+                            <div className="bg-[#1E1E1E] rounded-xl shadow-lg border border-[#3D3D3D] p-6">
+                                <h2 className="text-xl font-bold mb-4 text-gray-100">🛡️ Fraud Proof Receipt</h2>
+
+                                <div className="mb-6 p-4 bg-[#2D2D2D] border border-[#404040] rounded-lg">
+                                    <div className="text-sm text-gray-400">Claim:</div>
+                                    <div className="font-medium text-gray-100">{selectedClaim.text}</div>
+                                </div>
+
+                                {verifying ? (
+                                    <div className="text-center py-12">
+                                        <div className="animate-spin w-12 h-12 border-4 border-[#CC785C] border-t-transparent rounded-full mx-auto mb-4" />
+                                        <div className="font-medium text-gray-100">Running fraud proof...</div>
+                                        <div className="text-sm text-gray-400 mt-2">
+                                            Searching • Verifying • Calculating confidence
+                                        </div>
+                                    </div>
+                                ) : verification && (
+                                    <>
+                                        <div className={`mb-6 p-4 rounded-lg border-2 ${getVerdictStyle(verification.verdict)}`}>
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <span className="font-bold text-lg">{verification.verdict}</span>
+                                                <span className="text-sm">({verification.confidence}%)</span>
+                                            </div>
+                                            <div className="text-sm">{verification.reasoning}</div>
+                                        </div>
+
+                                        {verification.evidence?.length > 0 && (
+                                            <div>
+                                                <h3 className="font-semibold mb-3 text-gray-200">
+                                                    External Evidence ({verification.evidence.length} sources):
+                                                </h3>
+                                                <div className="space-y-3">
+                                                    {verification.evidence.map((source, i) => (
+                                                        <div key={i} className="p-4 bg-[#2D2D2D] border border-[#404040] rounded-lg">
+                                                            <div className="font-medium mb-1 text-gray-100">{source.title}</div>
+                                                            <div className="text-sm text-gray-300 mb-2">{source.snippet}</div>
+                                                            <a href={source.url} target="_blank" className="text-xs text-[#CC785C] hover:underline break-all">
+                                                                {source.url}
+                                                            </a>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-6 p-4 bg-[#CC785C]/10 border border-[#CC785C]/30 rounded-lg">
+                                            <div className="text-sm text-gray-200">
+                                                <strong className="text-[#CC785C]">💡 Like blockchain:</strong> Verified against external sources
+                                                (like validators), not just trusted because Claude said so.
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="mt-12 text-center text-sm text-gray-500">
+                            <p>Built with Claude Code • Inspired by Optimistic Rollups</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<VerifiableClaudeDemo />, document.getElementById('root'));
+    </script>
+</body>
+</html>
