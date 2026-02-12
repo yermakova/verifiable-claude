@@ -317,7 +317,7 @@
                     {/* Main content area with chat and side panel */}
                     <div className="flex-1 flex overflow-hidden">
                         {/* Chat area */}
-                        <div className={`flex-1 flex flex-col transition-all duration-300 ${sidePanelOpen ? 'mr-96' : ''}`}>
+                        <div className="flex-1 flex flex-col">
                             {/* Messages */}
                             <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
                                 {messages.length === 0 ? (
@@ -336,19 +336,19 @@
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="max-w-4xl mx-auto space-y-6">
+                                    <div className="max-w-2xl mx-auto space-y-6">
                                         {messages.map(message => (
                                             <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                                 {message.role === 'user' ? (
-                                                    <div className="bg-[#CC785C] text-white rounded-2xl px-4 py-3 max-w-2xl">
+                                                    <div className="bg-[#CC785C] text-white rounded-2xl px-4 py-3 max-w-xl">
                                                         {message.content}
                                                     </div>
                                                 ) : message.role === 'error' ? (
-                                                    <div className="bg-red-950/30 border border-red-800 text-red-400 rounded-2xl px-4 py-3 max-w-2xl">
+                                                    <div className="bg-red-950/30 border border-red-800 text-red-400 rounded-2xl px-4 py-3 max-w-xl">
                                                         {message.content}
                                                     </div>
                                                 ) : (
-                                                    <div className="bg-[#1E1E1E] border border-[#3D3D3D] rounded-2xl px-5 py-4 max-w-3xl">
+                                                    <div className="bg-[#1E1E1E] border border-[#3D3D3D] rounded-2xl px-5 py-4 w-full">
                                                         <div className="prose prose-invert max-w-none">
                                                             {renderMessageContent(message)}
                                                         </div>
@@ -378,11 +378,11 @@
                             </div>
 
                             {/* Input area */}
-                            <div className="border-t border-[#3D3D3D] bg-[#1E1E1E] p-4">
-                                <div className="max-w-4xl mx-auto">
+                            <div className="bg-[#0F0F0F] p-6">
+                                <div className="max-w-2xl mx-auto">
                                     {/* Suggested prompts */}
                                     {messages.length === 0 && (
-                                        <div className="mb-3 flex flex-wrap gap-2">
+                                        <div className="mb-4 flex flex-wrap gap-2 justify-center">
                                             {SUGGESTED_PROMPTS.map(suggestion => (
                                                 <button
                                                     key={suggestion}
@@ -395,24 +395,27 @@
                                         </div>
                                     )}
 
-                                    {/* Input */}
-                                    <div className="flex gap-3">
+                                    {/* Input container */}
+                                    <div className="bg-[#2D2D2D] border border-[#404040] rounded-3xl px-4 py-2 flex items-center gap-2 shadow-lg hover:border-[#4D4D4D] transition-colors">
                                         <input
                                             type="text"
                                             value={prompt}
                                             onChange={(e) => setPrompt(e.target.value)}
                                             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                                             placeholder="Ask about verifiable facts..."
-                                            className="flex-1 px-4 py-3 bg-[#2D2D2D] border border-[#404040] text-gray-100 placeholder-gray-500 rounded-lg focus:ring-2 focus:ring-[#CC785C] focus:border-transparent outline-none"
+                                            className="flex-1 bg-transparent text-gray-100 placeholder-gray-500 outline-none py-2"
                                             disabled={backendStatus !== 'connected' || loading}
                                             autoFocus
                                         />
                                         <button
                                             onClick={handleSendMessage}
                                             disabled={loading || !prompt.trim() || backendStatus !== 'connected'}
-                                            className="px-6 py-3 bg-[#CC785C] text-white rounded-lg font-semibold hover:bg-[#D97757] disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                            className="p-2 bg-[#CC785C] text-white rounded-full hover:bg-[#D97757] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            title="Send message"
                                         >
-                                            Send
+                                            <svg className="w-5 h-5 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                            </svg>
                                         </button>
                                     </div>
                                 </div>
