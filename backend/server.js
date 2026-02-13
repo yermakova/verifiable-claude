@@ -16,7 +16,19 @@ app.use(express.json());
 app.use(cors());
 
 // Initialize Verifiable Claude
-const vc = new VerifiableClaude({ cache: true });
+// Use deterministic verification (fraud proofs) if DETERMINISTIC_MODE=true in .env
+const useDeterministic = process.env.DETERMINISTIC_MODE === 'true';
+const vc = new VerifiableClaude({
+  cache: true,
+  deterministic: useDeterministic
+});
+
+console.log(`🔧 Verification mode: ${useDeterministic ? 'DETERMINISTIC (fraud proofs)' : 'LLM (legacy)'}`);
+if (useDeterministic) {
+  console.log('   ✓ Merkle tree commitments enabled');
+  console.log('   ✓ Reproducible verification');
+  console.log('   ✓ Cryptographic fraud proofs');
+}
 
 // ============================================================================
 // API ROUTES
@@ -27,9 +39,15 @@ const vc = new VerifiableClaude({ cache: true });
  * GET /health
  */
 app.get('/health', (req, res) => {
+  const hasOpusKey = !!(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.length > 0);
+  const isDeterministic = process.env.DETERMINISTIC_MODE === 'true';
   res.json({
     status: 'healthy',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    mode: hasOpusKey ? 'opus' : 'test',
+    usingOpus: hasOpusKey,
+    verificationMode: isDeterministic ? 'deterministic' : 'llm',
+    fraudProofsEnabled: isDeterministic
   });
 });
 

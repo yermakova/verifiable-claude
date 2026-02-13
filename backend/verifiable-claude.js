@@ -12,6 +12,8 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
+const MerkleTree = require('./merkle-tree');
+const DeterministicVerifier = require('./deterministic-verifier');
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -52,59 +54,95 @@ class ClaimDetector {
   async detectClaimsWithAI(text) {
     console.log('🔍 Using AI to detect factual claims...');
     
-    const prompt = `Analyze this text and extract ONLY the factual claims that can be objectively verified.
+    const prompt = `Extract individual factual claims from this text. Each claim must be SHORT (under 20 words) and verifiable.
 
 TEXT:
 "${text}"
 
-Rules:
-- Extract individual factual statements (names, dates, numbers, events)
-- Skip opinions, interpretations, or subjective statements
-- Break down complex sentences into individual verifiable facts
-- Return as JSON array
+CRITICAL RULES:
+- Extract SHORT, ATOMIC facts - each claim must be ONE specific fact
+- Each claim MUST be under 20 words
+- DO NOT return the entire text as one claim
+- Extract EXACT text from the source (copy it word-for-word)
+- Break down complex sentences into multiple small claims
+- Extract: dates, names, numbers, events, relationships, locations
 
-Format:
+Format as JSON:
 {
   "claims": [
     {
-      "text": "exact claim text",
-      "type": "date" | "name" | "number" | "event" | "relationship"
+      "text": "exact short claim from source (under 20 words)",
+      "type": "date|name|number|event|relationship|attribution"
     }
   ]
 }
 
 Example:
-Input: "Apollo 11 launched on July 16, 1969, with Neil Armstrong as commander."
-Output: {
+Input: "Vitalik Buterin and Joseph Poon formalized fraud proofs in their Plasma whitepaper in 2017."
+Output:
+{
   "claims": [
-    {"text": "Apollo 11 launched on July 16, 1969", "type": "date"},
-    {"text": "Neil Armstrong was the commander of Apollo 11", "type": "relationship"}
+    {"text": "Vitalik Buterin and Joseph Poon formalized fraud proofs in their Plasma whitepaper", "type": "attribution"},
+    {"text": "Plasma whitepaper in 2017", "type": "date"}
   ]
-}`;
+}
+
+Extract ONLY short, individual facts. Return many small claims, not one big claim.`;
 
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-opus-4-20250514', // Use Opus for this hard task
+        model: 'claude-sonnet-4-20250514', // Use Sonnet to save costs
         max_tokens: 2000,
         messages: [{
           role: 'user',
           content: prompt
         }]
       });
-      
-      const result = JSON.parse(response.content[0].text);
-      
-      // Convert to our claim format
-      const claims = result.claims.map((claim, index) => ({
-        id: `claim_${index}`,
-        text: claim.text,
-        type: claim.type,
-        confidence: 'MEDIUM',
-        verified: false,
-        evidence: null
-      }));
-      
+
+      // Strip markdown code blocks if present (very robust)
+      let jsonText = response.content[0].text.trim();
+
+      // Log what we received
+      console.log('Raw response first 200 chars:', jsonText.substring(0, 200));
+
+      // More aggressive cleaning
+      if (jsonText.includes('```')) {
+        // Find the JSON content between code blocks
+        const match = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+        if (match) {
+          jsonText = match[1].trim();
+        } else {
+          // Fallback: just remove all ```
+          jsonText = jsonText.replace(/```(?:json)?/g, '').trim();
+        }
+      }
+
+      console.log('Cleaned JSON first 200 chars:', jsonText.substring(0, 200));
+
+      const result = JSON.parse(jsonText);
+
+      // Convert to our claim format and filter out overly long claims
+      const claims = result.claims
+        .filter(claim => {
+          // Reject claims that are too long (likely the entire text)
+          const wordCount = claim.text.split(/\s+/).length;
+          if (wordCount > 30) {
+            console.log(`⚠️  Skipping overly long claim (${wordCount} words)`);
+            return false;
+          }
+          return true;
+        })
+        .map((claim, index) => ({
+          id: `claim_${index}`,
+          text: claim.text,  // Keep original text with markdown for matching
+          type: claim.type,
+          confidence: 'MEDIUM',
+          verified: false,
+          evidence: null
+        }));
+
       console.log(`✓ Detected ${claims.length} factual claims`);
+      claims.forEach(c => console.log(`  - "${c.text.substring(0, 60)}${c.text.length > 60 ? '...' : ''}"`));
       return claims;
       
     } catch (error) {
@@ -178,10 +216,10 @@ Output: {
     );
     
     if (!hasFactualPattern) return null;
-    
+
     return {
       id: `claim_${index}`,
-      text: trimmed,
+      text: trimmed,  // Keep original text with markdown for matching
       confidence: 'MEDIUM',
       verified: false,
       evidence: null
@@ -302,11 +340,21 @@ class ClaimVerifier {
    * Extract a good search query from a claim
    */
   extractSearchQuery(claimText, context) {
-    // If we have context (like book title), include it
+    // If we have the original user prompt, use it as context
+    if (context.userPrompt) {
+      // Extract key terms from the user's question to add context
+      const contextTerms = context.userPrompt
+        .replace(/^(what|who|when|where|why|how|tell me about|explain)\s+/i, '')
+        .replace(/\?$/,'')
+        .trim();
+      return `${contextTerms} ${claimText}`;
+    }
+
+    // Fallback: If we have context subject (backward compatibility)
     if (context.subject) {
       return `${context.subject} ${claimText}`;
     }
-    
+
     // Otherwise, clean up the claim for search
     return claimText
       .replace(/^(It is|It was|The|This is|This was)\s+/i, '')
@@ -339,8 +387,10 @@ class ClaimVerifier {
     });
     console.log('');
     
+    const contextInfo = evidence.query ? `\n\nORIGINAL CONTEXT: The user asked about "${evidence.query.split(' ').slice(0, 10).join(' ')}"` : '';
+
     const prompt = `You are a fact-checker. A claim was made, and we found some evidence.
-Your job is to determine if the evidence supports, contradicts, or is uncertain about the claim.
+Your job is to determine if the evidence supports, contradicts, or is uncertain about the claim.${contextInfo}
 
 CLAIM: "${claimText}"
 
@@ -404,7 +454,11 @@ class VerifiableClaude {
   constructor(options = {}) {
     this.detector = new ClaimDetector();
     this.verifier = new ClaimVerifier();
-    
+    this.deterministicVerifier = new DeterministicVerifier();
+
+    // Toggle between LLM verification (slow, subjective) and deterministic verification (fast, provable)
+    this.useDeterministicVerification = options.deterministic || false;
+
     // Enable caching to save API costs during development
     this.enableCache = options.cache !== false; // Default: true
     this.cacheFile = options.cacheFile || './cache.json';
@@ -479,43 +533,103 @@ class VerifiableClaude {
       });
     }
     
-    // 4. Build result
+    // 4. Generate Merkle tree commitment (fraud proof infrastructure)
+    let merkleCommitment = null;
+    if (claims.length > 0) {
+      const claimTexts = claims.map(c => c.text);
+      const merkleTree = new MerkleTree(claimTexts);
+      merkleCommitment = {
+        root: merkleTree.getRoot(),
+        timestamp: new Date().toISOString(),
+        claimCount: claims.length
+      };
+      console.log(`🌳 Merkle commitment: ${merkleCommitment.root.substring(0, 16)}...`);
+
+      // Attach Merkle proofs to each claim so they can be challenged later
+      claims.forEach((claim, index) => {
+        claim.merkleProof = merkleTree.getProof(index);
+        claim.merkleIndex = index;
+      });
+    }
+
+    // 5. Build result
     const result = {
       text: response.text,
       claims: claims,
+      commitment: merkleCommitment, // Cryptographic commitment to all claims
       metadata: {
         model: response.model,
         tokens: response.usage,
-        cached: false
+        cached: false,
+        verificationMode: this.useDeterministicVerification ? 'deterministic' : 'llm'
       }
     };
-    
-    // 5. Save to cache
+
+    // 6. Save to cache
     this.cache[cacheKey] = { ...result, metadata: { ...result.metadata, cached: true } };
     this.saveCache();
-    
+
     return result;
   }
   
   /**
    * Verify a specific claim (fraud proof)
+   *
+   * Two modes:
+   * - LLM verification: Uses Claude to judge evidence (slower, subjective, not reproducible)
+   * - Deterministic verification: Rule-based checks (faster, reproducible, cryptographically provable)
    */
   async verify(claim, context = {}) {
     console.log('🔎 Running fraud proof...');
-    
+
     // Cache verification results too
-    const cacheKey = `verify:${claim.text}:${JSON.stringify(context)}`;
+    const verificationMode = this.useDeterministicVerification ? 'deterministic' : 'llm';
+    const cacheKey = `verify:${verificationMode}:${claim.text}:${JSON.stringify(context)}`;
     if (this.cache[cacheKey]) {
       console.log('💾 Using cached verification (saved $0.02)');
       return this.cache[cacheKey];
     }
-    
-    const result = await this.verifier.verifyClaim(claim, context);
-    
+
+    let result;
+
+    if (this.useDeterministicVerification) {
+      // DETERMINISTIC MODE: Fast, reproducible, provable
+      console.log('⚡ Using deterministic verification (fraud proof mode)');
+
+      // First get evidence from search
+      const evidence = await this.verifier.searchForEvidence(claim.text, context);
+
+      // Then run deterministic checks
+      result = await this.deterministicVerifier.verifyClaim(claim, evidence);
+
+      // Add evidence to result for frontend display
+      result.evidence = evidence.results || [];
+
+      // Add Merkle proof verification if available
+      if (claim.merkleProof && context.merkleRoot) {
+        const leafHash = this.deterministicVerifier.hashClaim(claim.text);
+        const proofValid = MerkleTree.verifyProof(leafHash, claim.merkleProof, context.merkleRoot);
+        result.merkleProofValid = proofValid;
+
+        if (!proofValid) {
+          result.verdict = 'FRAUD_PROVEN';
+          result.fraudProof = {
+            reason: 'Merkle proof invalid - claim was not in original commitment',
+            claimHash: leafHash,
+            expectedRoot: context.merkleRoot
+          };
+        }
+      }
+    } else {
+      // LLM MODE: Slower, subjective, not reproducible (legacy)
+      console.log('🤖 Using LLM verification (legacy mode)');
+      result = await this.verifier.verifyClaim(claim, context);
+    }
+
     // Cache the result
     this.cache[cacheKey] = result;
     this.saveCache();
-    
+
     return result;
   }
   
@@ -550,12 +664,21 @@ Do NOT make this claim again. If you're uncertain about facts, say so explicitly
     const response = await anthropic.messages.create({
       model: options.model || 'claude-sonnet-4-20250514',
       max_tokens: options.maxTokens || 2000,
+      system: `Provide concise, factual responses. Keep answers brief and to the point, focusing on verifiable facts. Use clear paragraphs and bullet points where appropriate.
+
+IMPORTANT: When answering "who invented/created X" questions:
+- If multiple people/teams contributed, list them all with their specific contributions
+- Include timeframes when concepts evolved over time
+- Distinguish between early theoretical work and practical implementations
+- Be precise about who did what, rather than oversimplifying
+
+Format your response to make individual factual claims easy to extract and verify.`,
       messages: [{
         role: 'user',
         content: prompt
       }]
     });
-    
+
     return {
       text: response.content[0].text,
       model: response.model,

@@ -53,10 +53,10 @@
         const API_BASE_URL = 'http://localhost:3001';
 
         const SUGGESTED_PROMPTS = [
-            'Tell me about Apollo 11',
-            'When was the Eiffel Tower built?',
-            'Who wrote The Left Hand of Darkness?',
-            'What is the capital of France?'
+            'who invented fraud proofs',
+            'what is the summary of thinking fast and slow',
+            'why did russian invade ukraine',
+            'who won the olympics in figure skating'
         ];
 
         const Shield = () => (
@@ -73,7 +73,9 @@
             const [loading, setLoading] = useState(false);
             const [verifying, setVerifying] = useState(false);
             const [sidePanelOpen, setSidePanelOpen] = useState(false);
-            const [backendStatus, setBackendStatus] = useState('checking');
+            const [backendStatus, setBackendStatus] = useState({ status: 'checking', mode: null });
+            const [fraudProofStages, setFraudProofStages] = useState(null);
+            const [currentCommitment, setCurrentCommitment] = useState(null);
             const messagesEndRef = useRef(null);
             const chatContainerRef = useRef(null);
 
@@ -90,22 +92,36 @@
 
             const checkBackend = async () => {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/health`);
+                    const response = await fetch(`${API_BASE_URL}/health?t=${Date.now()}`, {
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        }
+                    });
                     if (response.ok) {
-                        setBackendStatus('connected');
+                        const data = await response.json();
+                        setBackendStatus({
+                            status: 'connected',
+                            mode: data.mode || 'unknown',
+                            usingOpus: data.usingOpus
+                        });
                     } else {
-                        setBackendStatus('error');
+                        setBackendStatus({ status: 'error', mode: null });
                     }
                 } catch (err) {
-                    setBackendStatus('offline');
+                    setBackendStatus({ status: 'offline', mode: null });
                 }
             };
 
             const callGenerateAPI = async (userPrompt) => {
-                const response = await fetch(`${API_BASE_URL}/api/generate`, {
+                const response = await fetch(`${API_BASE_URL}/api/generate?t=${Date.now()}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
                     },
                     body: JSON.stringify({ prompt: userPrompt })
                 });
@@ -115,14 +131,42 @@
                 }
 
                 const data = await response.json();
+
+                // Log Merkle commitment if present
+                if (data.data.commitment) {
+                    console.log('🌳 Merkle Commitment:', data.data.commitment.root);
+                    console.log('   Timestamp:', data.data.commitment.timestamp);
+                    console.log('   Claims:', data.data.commitment.claimCount);
+
+                    // Store commitment for fraud proof tracker
+                    setCurrentCommitment(data.data.commitment);
+
+                    // Initialize fraud proof stages
+                    setFraudProofStages({
+                        commitment: {
+                            status: 'completed',
+                            data: data.data.commitment,
+                            timestamp: new Date().toISOString()
+                        },
+                        challenge: { status: 'pending' },
+                        evidenceGathering: { status: 'pending' },
+                        deterministicChecks: { status: 'pending' },
+                        merkleProofVerification: { status: 'pending' },
+                        verdict: { status: 'pending' }
+                    });
+                }
+
                 return data.data;
             };
 
             const callVerifyAPI = async (claim, context = {}) => {
-                const response = await fetch(`${API_BASE_URL}/api/verify`, {
+                const response = await fetch(`${API_BASE_URL}/api/verify?t=${Date.now()}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
                     },
                     body: JSON.stringify({ claim, context })
                 });
@@ -160,7 +204,9 @@
                         role: 'assistant',
                         content: result.text,
                         claims: result.claims,
-                        metadata: result.metadata
+                        metadata: result.metadata,
+                        commitment: result.commitment,
+                        userPrompt: currentPrompt
                     };
 
                     setMessages(prev => [...prev, assistantMessage]);
@@ -177,14 +223,130 @@
                 }
             };
 
-            const handleVerifyClaim = async (claim) => {
+            const handleVerifyClaim = async (claim, userPrompt = '', commitment = null) => {
                 setSelectedClaim(claim);
                 setSidePanelOpen(true);
                 setVerifying(true);
                 setVerification(null);
 
                 try {
-                    const result = await callVerifyAPI(claim, {});
+                    // Stage 1: Commitment (already done)
+                    setFraudProofStages(prev => ({
+                        ...prev,
+                        commitment: {
+                            status: 'completed',
+                            data: commitment,
+                            timestamp: new Date().toISOString()
+                        }
+                    }));
+
+                    // Stage 2: Challenge initiated
+                    setFraudProofStages(prev => ({
+                        ...prev,
+                        challenge: {
+                            status: 'in-progress',
+                            data: {
+                                claimText: claim.text,
+                                claimIndex: claim.merkleIndex,
+                                merkleProof: claim.merkleProof
+                            },
+                            timestamp: new Date().toISOString()
+                        }
+                    }));
+
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Visual delay
+
+                    setFraudProofStages(prev => ({
+                        ...prev,
+                        challenge: { ...prev.challenge, status: 'completed' },
+                        evidenceGathering: {
+                            status: 'in-progress',
+                            timestamp: new Date().toISOString()
+                        }
+                    }));
+
+                    // Include Merkle root in context for fraud proof verification
+                    const context = { userPrompt };
+                    if (commitment?.root) {
+                        context.merkleRoot = commitment.root;
+                    }
+
+                    const result = await callVerifyAPI(claim, context);
+
+                    // Stage 3: Evidence gathered
+                    setFraudProofStages(prev => ({
+                        ...prev,
+                        evidenceGathering: {
+                            status: 'completed',
+                            data: {
+                                sourcesFound: result.evidence?.length || 0,
+                                searchQuery: userPrompt
+                            },
+                            timestamp: new Date().toISOString()
+                        },
+                        deterministicChecks: {
+                            status: 'in-progress',
+                            timestamp: new Date().toISOString()
+                        }
+                    }));
+
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    // Stage 4: Deterministic checks
+                    if (result.checks) {
+                        console.log('🔍 Deterministic Checks:');
+                        result.checks.forEach(check => {
+                            console.log(`  ${check.passed ? '✓' : '✗'} ${check.name}: ${check.reason}`);
+                        });
+
+                        setFraudProofStages(prev => ({
+                            ...prev,
+                            deterministicChecks: {
+                                status: 'completed',
+                                data: result.checks,
+                                timestamp: new Date().toISOString()
+                            },
+                            merkleProofVerification: {
+                                status: 'in-progress',
+                                timestamp: new Date().toISOString()
+                            }
+                        }));
+
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+
+                    // Stage 5: Merkle proof verification
+                    setFraudProofStages(prev => ({
+                        ...prev,
+                        merkleProofVerification: {
+                            status: 'completed',
+                            data: {
+                                proofValid: result.merkleProofValid !== false,
+                                leafHash: claim.text ? claim.text.substring(0, 32) + '...' : ''
+                            },
+                            timestamp: new Date().toISOString()
+                        },
+                        verdict: {
+                            status: 'in-progress',
+                            timestamp: new Date().toISOString()
+                        }
+                    }));
+
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    // Stage 6: Final verdict
+                    setFraudProofStages(prev => ({
+                        ...prev,
+                        verdict: {
+                            status: 'completed',
+                            data: {
+                                verdict: result.verdict,
+                                fraudProof: result.fraudProof
+                            },
+                            timestamp: new Date().toISOString()
+                        }
+                    }));
+
                     setVerification(result);
                 } catch (err) {
                     console.error('Verify error:', err);
@@ -194,6 +356,14 @@
                         reasoning: 'Failed to verify claim. Check your backend logs.',
                         evidence: []
                     });
+                    setFraudProofStages(prev => ({
+                        ...prev,
+                        verdict: {
+                            status: 'error',
+                            data: { error: err.message },
+                            timestamp: new Date().toISOString()
+                        }
+                    }));
                 } finally {
                     setVerifying(false);
                 }
@@ -211,9 +381,77 @@
                 return 'text-yellow-400 bg-yellow-950/30 border-yellow-800';
             };
 
+            const renderFraudProofStage = (number, title, stage, details) => {
+                const status = stage?.status || 'pending';
+
+                const getStatusIcon = () => {
+                    if (status === 'completed') {
+                        return <div className="w-6 h-6 rounded-full bg-green-500/20 border-2 border-green-500 flex items-center justify-center">
+                            <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>;
+                    }
+                    if (status === 'in-progress') {
+                        return <div className="w-6 h-6 rounded-full bg-blue-500/20 border-2 border-blue-500 flex items-center justify-center animate-pulse">
+                            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                        </div>;
+                    }
+                    if (status === 'error') {
+                        return <div className="w-6 h-6 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center">
+                            <svg className="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </div>;
+                    }
+                    return <div className="w-6 h-6 rounded-full bg-gray-700/30 border-2 border-gray-600 flex items-center justify-center">
+                        <div className="text-xs text-gray-600 font-bold">{number}</div>
+                    </div>;
+                };
+
+                const getStatusColor = () => {
+                    if (status === 'completed') return 'text-green-400';
+                    if (status === 'in-progress') return 'text-blue-400';
+                    if (status === 'error') return 'text-red-400';
+                    return 'text-gray-600';
+                };
+
+                return (
+                    <div className={`relative ${status !== 'pending' ? 'opacity-100' : 'opacity-50'}`}>
+                        {/* Connector line */}
+                        {number !== '6' && (
+                            <div className={`absolute left-3 top-8 w-0.5 h-full ${
+                                status === 'completed' ? 'bg-green-500/30' : 'bg-gray-700/30'
+                            }`}></div>
+                        )}
+
+                        <div className="flex gap-3">
+                            {getStatusIcon()}
+                            <div className="flex-1 pb-4">
+                                <div className={`font-semibold text-sm ${getStatusColor()}`}>
+                                    {title}
+                                </div>
+                                {status !== 'pending' && details && (
+                                    <div className="mt-2 p-2 bg-[#1A1A1A] rounded border border-[#2D2D2D]">
+                                        {details}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
             const renderMessageContent = (message) => {
                 const text = message.content;
                 const claims = message.claims || [];
+                const userPrompt = message.userPrompt || '';
+                const commitment = message.commitment || null;
+
+                // Debug: log claims to console
+                if (claims.length > 0) {
+                    console.log('Message claims:', claims.map(c => c.text));
+                }
 
                 // Create a map of claim texts for quick lookup
                 const claimTexts = new Set(claims.map(c => c.text.toLowerCase().trim()));
@@ -229,7 +467,7 @@
                         const content = line.trim().substring(2);
                         return (
                             <div key={lineIndex} className="ml-4 text-gray-300 mb-1">
-                                • {renderTextWithClaims(content, claims)}
+                                • {renderTextWithClaims(content, claims, userPrompt, commitment)}
                             </div>
                         );
                     }
@@ -238,7 +476,7 @@
                     if (line.trim()) {
                         return (
                             <div key={lineIndex} className="text-gray-300 mb-2 leading-relaxed">
-                                {renderTextWithClaims(line, claims)}
+                                {renderTextWithClaims(line, claims, userPrompt, commitment)}
                             </div>
                         );
                     }
@@ -250,52 +488,191 @@
                 return text.split('\n').map(renderLine);
             };
 
-            const renderTextWithClaims = (text, claims) => {
-                // Split text into sentences
-                const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-
-                return sentences.map((sentence, i) => {
-                    const trimmedSentence = sentence.trim();
-
-                    // Check if this sentence matches any claim
-                    const matchingClaim = claims.find(claim => {
-                        const claimText = claim.text.toLowerCase().trim();
-                        const sentenceText = trimmedSentence.toLowerCase();
-                        return sentenceText.includes(claimText) || claimText.includes(sentenceText.replace(/[.!?]+$/, ''));
+            const renderTextWithClaims = (text, claims, userPrompt = '', commitment = null) => {
+                if (!claims || claims.length === 0) {
+                    // Handle bold text when no claims
+                    const parts = text.split(/(\*\*.*?\*\*)/g);
+                    return parts.map((part, k) => {
+                        if (part.startsWith('**') && part.endsWith('**')) {
+                            return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+                        }
+                        return part;
                     });
+                }
 
-                    if (matchingClaim) {
-                        return (
-                            <span
-                                key={i}
-                                onClick={() => handleVerifyClaim(matchingClaim)}
-                                className="cursor-pointer hover:bg-[#CC785C]/20 hover:text-[#CC785C] transition-colors rounded px-1 border-b border-[#CC785C]/40 border-dotted"
-                                title="Click to verify this claim"
-                            >
-                                {sentence}
-                            </span>
-                        );
+                // Create a list of claim matches with their positions
+                const matches = [];
+                claims.forEach(claim => {
+                    const claimText = claim.text;
+                    const lowerText = text.toLowerCase();
+                    const lowerClaim = claimText.toLowerCase();
+
+                    // Debug logging
+                    console.log(`Trying to match claim in line: "${claimText}" in "${text.substring(0, 100)}..."`);
+
+
+                    // Try exact match first
+                    let index = lowerText.indexOf(lowerClaim);
+                    if (index !== -1) {
+                        matches.push({
+                            start: index,
+                            end: index + claimText.length,
+                            claim: claim,
+                            text: text.substring(index, index + claimText.length)
+                        });
+                    } else {
+                        // Try matching with trailing punctuation removed from claim
+                        const claimNoPunct = claimText.replace(/[.,;:!?]+$/, '');
+                        const lowerClaimNoPunct = claimNoPunct.toLowerCase();
+
+                        index = lowerText.indexOf(lowerClaimNoPunct);
+                        if (index !== -1) {
+                            matches.push({
+                                start: index,
+                                end: index + claimNoPunct.length,
+                                claim: claim,
+                                text: text.substring(index, index + claimNoPunct.length)
+                            });
+                        } else {
+                        // Try finding key phrases from the claim
+                        // Split claim into significant words (filter out common words)
+                        const significantWords = claimText.toLowerCase()
+                            .replace(/[.,;:!?()]/g, '') // Remove punctuation
+                            .split(/\s+/)
+                            .filter(word => word.length > 2 && !['the', 'and', 'was', 'were', 'that', 'this', 'from', 'with', 'for'].includes(word));
+
+                        console.log(`  Significant words: ${significantWords.join(', ')}`);
+
+                        // Check if multiple significant words appear in this line
+                        const matchCount = significantWords.filter(word => lowerText.includes(word)).length;
+
+                        console.log(`  Match count: ${matchCount}/${significantWords.length}`);
+
+                        // If most significant words match, try to highlight the relevant portion
+                        // Lower threshold: 1 word for short claims, or 50% of words for longer claims
+                        const threshold = significantWords.length <= 2 ? 1 : Math.ceil(significantWords.length * 0.5);
+                        if (matchCount >= threshold && significantWords.length > 0) {
+                            // Find character positions in original text
+                            let matchStart = -1;
+                            let matchEnd = -1;
+
+                            // Find first and last occurrence of significant words
+                            significantWords.forEach(word => {
+                                const wordIndex = lowerText.indexOf(word);
+                                if (wordIndex !== -1) {
+                                    if (matchStart === -1 || wordIndex < matchStart) {
+                                        matchStart = wordIndex;
+                                    }
+                                    const wordEnd = wordIndex + word.length;
+                                    if (matchEnd === -1 || wordEnd > matchEnd) {
+                                        matchEnd = wordEnd;
+                                    }
+                                }
+                            });
+
+                            if (matchStart !== -1 && matchEnd !== -1 && matchEnd > matchStart) {
+                                // Extend to word boundaries
+                                while (matchStart > 0 && /\w/.test(text[matchStart - 1])) matchStart--;
+                                while (matchEnd < text.length && /\w/.test(text[matchEnd])) matchEnd++;
+
+                                matches.push({
+                                    start: matchStart,
+                                    end: matchEnd,
+                                    claim: claim,
+                                    text: text.substring(matchStart, matchEnd)
+                                });
+                                console.log(`  ✓ Fuzzy matched: "${text.substring(matchStart, matchEnd)}"`);
+                            }
+                        }
+                        }
+                    }
+                });
+
+                // Sort matches by start position
+                matches.sort((a, b) => a.start - b.start);
+
+                // If no matches, just render the text with bold support
+                if (matches.length === 0) {
+                    const parts = text.split(/(\*\*.*?\*\*)/g);
+                    return parts.map((part, k) => {
+                        if (part.startsWith('**') && part.endsWith('**')) {
+                            return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+                        }
+                        return part;
+                    });
+                }
+
+                // Remove overlapping matches - keep only the first occurrence of each position
+                const uniqueMatches = [];
+                const usedPositions = new Set();
+
+                matches.forEach(match => {
+                    let hasOverlap = false;
+                    for (let i = match.start; i < match.end; i++) {
+                        if (usedPositions.has(i)) {
+                            hasOverlap = true;
+                            break;
+                        }
                     }
 
-                    // Handle bold text
-                    const parts = sentence.split(/(\*\*.*?\*\*)/g);
-                    return (
-                        <span key={i}>
-                            {parts.map((part, k) => {
-                                if (part.startsWith('**') && part.endsWith('**')) {
-                                    return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
-                                }
-                                return part;
-                            })}
+                    if (!hasOverlap) {
+                        uniqueMatches.push(match);
+                        for (let i = match.start; i < match.end; i++) {
+                            usedPositions.add(i);
+                        }
+                    }
+                });
+
+                // Helper function to process bold text within a string
+                const processBoldText = (str) => {
+                    const parts = str.split(/(\*\*.*?\*\*)/g);
+                    return parts.map((part, k) => {
+                        if (part.startsWith('**') && part.endsWith('**')) {
+                            return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+                        }
+                        return part;
+                    });
+                };
+
+                // Build the result with clickable claims
+                const result = [];
+                let lastIndex = 0;
+
+                uniqueMatches.forEach((match, i) => {
+                    // Add text before this match
+                    if (match.start > lastIndex) {
+                        const beforeText = text.substring(lastIndex, match.start);
+                        result.push(<span key={`text-${i}`}>{processBoldText(beforeText)}</span>);
+                    }
+
+                    // Add the clickable claim with bold text support
+                    result.push(
+                        <span
+                            key={`claim-${i}`}
+                            onClick={() => handleVerifyClaim(match.claim, userPrompt)}
+                            className="cursor-pointer hover:bg-[#CC785C]/20 hover:text-[#CC785C] transition-colors rounded px-1 border-b border-[#CC785C]/40 border-dotted"
+                            title="Click to verify this claim"
+                        >
+                            {processBoldText(match.text)}
                         </span>
                     );
+
+                    lastIndex = match.end;
                 });
+
+                // Add any remaining text
+                if (lastIndex < text.length) {
+                    const remainingText = text.substring(lastIndex);
+                    result.push(<span key="text-end">{processBoldText(remainingText)}</span>);
+                }
+
+                return result;
             };
 
             return (
                 <div className="h-screen bg-[#0F0F0F] flex flex-col overflow-hidden">
                     {/* Header */}
-                    <div className="border-b border-[#3D3D3D] bg-[#1E1E1E] px-6 py-3">
+                    <div className="px-6 py-3">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Shield />
@@ -304,11 +681,23 @@
                                 </h1>
                             </div>
                             <div className="text-xs">
-                                {backendStatus === 'connected' && (
+                                {backendStatus.status === 'checking' && (
+                                    <span className="text-gray-400">● Checking...</span>
+                                )}
+                                {backendStatus.status === 'connected' && backendStatus.mode === 'opus' && (
+                                    <span className="text-green-400">● Full mode engaged</span>
+                                )}
+                                {backendStatus.status === 'connected' && backendStatus.mode === 'test' && (
+                                    <span className="text-yellow-400">● Using test data</span>
+                                )}
+                                {backendStatus.status === 'connected' && !backendStatus.mode && (
                                     <span className="text-green-400">● Connected</span>
                                 )}
-                                {backendStatus === 'offline' && (
+                                {backendStatus.status === 'offline' && (
                                     <span className="text-red-400">● Offline</span>
+                                )}
+                                {backendStatus.status === 'error' && (
+                                    <span className="text-red-400">● Error</span>
                                 )}
                             </div>
                         </div>
@@ -316,6 +705,161 @@
 
                     {/* Main content area with chat and side panel */}
                     <div className="flex-1 flex overflow-hidden">
+                        {/* Left Sidebar - Fraud Proof Tracker */}
+                        <div className={`w-80 border-r border-[#2D2D2D] bg-[#0A0A0A] overflow-y-auto transition-all duration-300 ${fraudProofStages ? 'opacity-100' : 'opacity-50'}`}>
+                            <div className="p-4 border-b border-[#2D2D2D] sticky top-0 bg-[#0A0A0A] z-10">
+                                <h2 className="text-sm font-bold text-[#CC785C] flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                    </svg>
+                                    FRAUD PROOF TRACKER
+                                </h2>
+                                <p className="text-xs text-gray-500 mt-1">Optimistic verification with cryptographic proofs</p>
+                            </div>
+
+                            <div className="p-4 space-y-4">
+                                {fraudProofStages ? (
+                                    <>
+                                        {/* Stage 1: Commitment */}
+                                        {renderFraudProofStage(
+                                            '1',
+                                            'Commitment Phase',
+                                            fraudProofStages.commitment,
+                                            fraudProofStages.commitment?.status === 'completed' && fraudProofStages.commitment.data && (
+                                                <div className="text-xs space-y-1">
+                                                    <div className="font-mono text-gray-400">
+                                                        Root: {fraudProofStages.commitment.data.root?.substring(0, 16)}...
+                                                    </div>
+                                                    <div className="text-gray-500">
+                                                        Claims: {fraudProofStages.commitment.data.claimCount}
+                                                    </div>
+                                                    <div className="text-gray-600 text-[10px]">
+                                                        {new Date(fraudProofStages.commitment.data.timestamp).toLocaleTimeString()}
+                                                    </div>
+                                                </div>
+                                            )
+                                        )}
+
+                                        {/* Stage 2: Challenge */}
+                                        {renderFraudProofStage(
+                                            '2',
+                                            'Challenge Initiated',
+                                            fraudProofStages.challenge,
+                                            fraudProofStages.challenge?.status !== 'pending' && fraudProofStages.challenge?.data && (
+                                                <div className="text-xs space-y-1">
+                                                    <div className="text-gray-400">
+                                                        "{fraudProofStages.challenge.data.claimText?.substring(0, 40)}..."
+                                                    </div>
+                                                    <div className="text-gray-500">
+                                                        Claim #{fraudProofStages.challenge.data.claimIndex}
+                                                    </div>
+                                                    {fraudProofStages.challenge.data.merkleProof && (
+                                                        <div className="text-gray-600">
+                                                            Proof steps: {fraudProofStages.challenge.data.merkleProof.length}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        )}
+
+                                        {/* Stage 3: Evidence Gathering */}
+                                        {renderFraudProofStage(
+                                            '3',
+                                            'Evidence Gathering',
+                                            fraudProofStages.evidenceGathering,
+                                            fraudProofStages.evidenceGathering?.status === 'completed' && fraudProofStages.evidenceGathering?.data && (
+                                                <div className="text-xs space-y-1">
+                                                    <div className="text-gray-400">
+                                                        Sources found: {fraudProofStages.evidenceGathering.data.sourcesFound}
+                                                    </div>
+                                                    <div className="text-gray-500 truncate">
+                                                        Query: {fraudProofStages.evidenceGathering.data.searchQuery}
+                                                    </div>
+                                                </div>
+                                            )
+                                        )}
+
+                                        {/* Stage 4: Deterministic Checks */}
+                                        {renderFraudProofStage(
+                                            '4',
+                                            'Deterministic Verification',
+                                            fraudProofStages.deterministicChecks,
+                                            fraudProofStages.deterministicChecks?.status === 'completed' && fraudProofStages.deterministicChecks?.data && (
+                                                <div className="text-xs space-y-1">
+                                                    {fraudProofStages.deterministicChecks.data.map((check, i) => (
+                                                        <div key={i} className={`flex items-start gap-2 ${check.passed ? 'text-green-400' : 'text-red-400'}`}>
+                                                            <span>{check.passed ? '✓' : '✗'}</span>
+                                                            <div className="flex-1">
+                                                                <div className="font-medium">{check.name}</div>
+                                                                <div className="text-gray-500 text-[10px]">{check.reason}</div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )
+                                        )}
+
+                                        {/* Stage 5: Merkle Proof Verification */}
+                                        {renderFraudProofStage(
+                                            '5',
+                                            'Merkle Proof Verification',
+                                            fraudProofStages.merkleProofVerification,
+                                            fraudProofStages.merkleProofVerification?.status === 'completed' && fraudProofStages.merkleProofVerification?.data && (
+                                                <div className="text-xs space-y-1">
+                                                    <div className={fraudProofStages.merkleProofVerification.data.proofValid ? 'text-green-400' : 'text-red-400'}>
+                                                        {fraudProofStages.merkleProofVerification.data.proofValid ? '✓ Proof Valid' : '✗ Proof Invalid'}
+                                                    </div>
+                                                    <div className="text-gray-500 text-[10px] font-mono">
+                                                        Claim committed in original response
+                                                    </div>
+                                                </div>
+                                            )
+                                        )}
+
+                                        {/* Stage 6: Verdict */}
+                                        {renderFraudProofStage(
+                                            '6',
+                                            'Final Verdict',
+                                            fraudProofStages.verdict,
+                                            fraudProofStages.verdict?.status === 'completed' && fraudProofStages.verdict?.data && (
+                                                <div className="text-xs space-y-1">
+                                                    <div className={`font-bold ${
+                                                        fraudProofStages.verdict.data.verdict === 'VERIFIED' ? 'text-green-400' :
+                                                        fraudProofStages.verdict.data.verdict === 'FRAUD_PROVEN' ? 'text-red-400' :
+                                                        'text-yellow-400'
+                                                    }`}>
+                                                        {fraudProofStages.verdict.data.verdict}
+                                                    </div>
+                                                    {fraudProofStages.verdict.data.fraudProof && (
+                                                        <div className="text-red-400 text-[10px] p-2 bg-red-950/20 rounded border border-red-900/30">
+                                                            🚨 Fraud Detected: {fraudProofStages.verdict.data.fraudProof.reason}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="text-center text-gray-600 py-8 text-sm">
+                                        <div className="mb-2">⏳</div>
+                                        <div>Awaiting response...</div>
+                                        <div className="text-xs mt-2">Fraud proof tracker will activate once a response is generated</div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            {currentCommitment && (
+                                <div className="p-4 border-t border-[#2D2D2D] mt-4">
+                                    <div className="text-[10px] text-gray-600 space-y-1">
+                                        <div className="font-semibold text-gray-500">Current Commitment:</div>
+                                        <div className="font-mono break-all">{currentCommitment.root}</div>
+                                        <div>{new Date(currentCommitment.timestamp).toLocaleString()}</div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         {/* Chat area */}
                         <div className="flex-1 flex flex-col">
                             {/* Messages */}
@@ -386,8 +930,50 @@
                                             {SUGGESTED_PROMPTS.map(suggestion => (
                                                 <button
                                                     key={suggestion}
-                                                    onClick={() => setPrompt(suggestion)}
+                                                    onClick={async () => {
+                                                        if (loading || backendStatus.status !== 'connected') return;
+
+                                                        const userMessage = {
+                                                            id: Date.now(),
+                                                            role: 'user',
+                                                            content: suggestion
+                                                        };
+
+                                                        setMessages(prev => [...prev, userMessage]);
+                                                        setPrompt('');
+                                                        setLoading(true);
+                                                        setSidePanelOpen(false);
+                                                        setSelectedClaim(null);
+                                                        setVerification(null);
+
+                                                        try {
+                                                            const result = await callGenerateAPI(suggestion);
+
+                                                            const assistantMessage = {
+                                                                id: Date.now() + 1,
+                                                                role: 'assistant',
+                                                                content: result.text,
+                                                                claims: result.claims,
+                                                                metadata: result.metadata,
+                                                                commitment: result.commitment,
+                                                                userPrompt: suggestion
+                                                            };
+
+                                                            setMessages(prev => [...prev, assistantMessage]);
+                                                        } catch (err) {
+                                                            console.error('Generate error:', err);
+                                                            const errorMessage = {
+                                                                id: Date.now() + 1,
+                                                                role: 'error',
+                                                                content: 'Failed to generate response. Make sure backend is running on port 3001.'
+                                                            };
+                                                            setMessages(prev => [...prev, errorMessage]);
+                                                        } finally {
+                                                            setLoading(false);
+                                                        }
+                                                    }}
                                                     className="text-sm px-3 py-1.5 bg-[#2D2D2D] hover:bg-[#3D3D3D] text-gray-300 border border-[#404040] rounded-lg transition"
+                                                    disabled={loading || backendStatus.status !== 'connected'}
                                                 >
                                                     {suggestion}
                                                 </button>
@@ -404,12 +990,12 @@
                                             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                                             placeholder="Ask about verifiable facts..."
                                             className="flex-1 bg-transparent text-gray-100 placeholder-gray-500 outline-none py-2"
-                                            disabled={backendStatus !== 'connected' || loading}
+                                            disabled={backendStatus.status !== 'connected' || loading}
                                             autoFocus
                                         />
                                         <button
                                             onClick={handleSendMessage}
-                                            disabled={loading || !prompt.trim() || backendStatus !== 'connected'}
+                                            disabled={loading || !prompt.trim() || backendStatus.status !== 'connected'}
                                             className="p-2 bg-[#CC785C] text-white rounded-full hover:bg-[#D97757] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                             title="Send message"
                                         >
@@ -423,8 +1009,8 @@
                         </div>
 
                         {/* Side panel for verification */}
-                        <div className={`fixed right-0 top-0 h-full w-96 bg-[#1E1E1E] border-l border-[#3D3D3D] transform transition-transform duration-300 ${sidePanelOpen ? 'translate-x-0' : 'translate-x-full'} overflow-y-auto`}>
-                            <div className="sticky top-0 bg-[#1E1E1E] border-b border-[#3D3D3D] p-4 flex items-center justify-between">
+                        <div className={`fixed right-0 top-[52px] bottom-0 w-96 transform transition-transform duration-300 ${sidePanelOpen ? 'translate-x-0' : 'translate-x-full'} overflow-y-auto backdrop-blur-xl bg-black/10 rounded-tl-2xl`} style={{backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)'}}>
+                            <div className="p-4 flex items-center justify-between sticky top-0 bg-black/10 backdrop-blur-md z-10">
                                 <h2 className="font-bold text-gray-100">🛡️ Verification</h2>
                                 <button
                                     onClick={handleCloseSidePanel}
@@ -456,10 +1042,40 @@
                                             <div className={`mb-4 p-3 rounded-lg border-2 ${getVerdictStyle(verification.verdict)}`}>
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="font-bold">{verification.verdict}</span>
-                                                    <span className="text-xs">({verification.confidence}%)</span>
+                                                    {verification.confidence !== undefined && (
+                                                        <span className="text-xs">({verification.confidence}%)</span>
+                                                    )}
                                                 </div>
-                                                <div className="text-xs mt-2">{verification.reasoning}</div>
+                                                {verification.reasoning && (
+                                                    <div className="text-xs mt-2">{verification.reasoning}</div>
+                                                )}
                                             </div>
+
+                                            {verification.checks?.length > 0 && (
+                                                <div className="mb-4">
+                                                    <h3 className="text-sm font-semibold mb-3 text-gray-200">
+                                                        Deterministic Checks:
+                                                    </h3>
+                                                    <div className="space-y-2">
+                                                        {verification.checks.map((check, i) => (
+                                                            <div key={i} className={`p-3 rounded-lg border ${check.passed ? 'bg-green-950/20 border-green-800/30' : 'bg-red-950/20 border-red-800/30'}`}>
+                                                                <div className="flex items-start gap-2">
+                                                                    <span className={`text-sm ${check.passed ? 'text-green-400' : 'text-red-400'}`}>
+                                                                        {check.passed ? '✓' : '✗'}
+                                                                    </span>
+                                                                    <div className="flex-1">
+                                                                        <div className={`font-medium text-sm ${check.passed ? 'text-green-400' : 'text-red-400'}`}>
+                                                                            {check.name}
+                                                                            {check.critical && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-red-900/30 border border-red-800/50 rounded">CRITICAL</span>}
+                                                                        </div>
+                                                                        <div className="text-xs text-gray-300 mt-1">{check.reason}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {verification.evidence?.length > 0 && (
                                                 <div>
@@ -480,9 +1096,35 @@
                                                 </div>
                                             )}
 
+                                            {verification.fraudProof && (
+                                                <div className="mt-4 p-3 bg-red-950/30 border-2 border-red-800 rounded-lg">
+                                                    <h3 className="text-sm font-semibold mb-2 text-red-400 flex items-center gap-2">
+                                                        🚨 Fraud Proof Generated
+                                                    </h3>
+                                                    <div className="space-y-2 text-xs">
+                                                        <div>
+                                                            <span className="text-gray-400">Failed Check:</span>
+                                                            <span className="ml-2 text-red-300 font-medium">{verification.fraudProof.failedCheck}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-400">Reason:</span>
+                                                            <div className="ml-2 mt-1 text-red-300">{verification.fraudProof.reason}</div>
+                                                        </div>
+                                                        {verification.fraudProof.proofHash && (
+                                                            <div>
+                                                                <span className="text-gray-400">Proof Hash:</span>
+                                                                <div className="ml-2 mt-1 font-mono text-[10px] text-red-400 break-all">
+                                                                    {verification.fraudProof.proofHash}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <div className="mt-4 p-3 bg-[#CC785C]/10 border border-[#CC785C]/30 rounded-lg">
                                                 <div className="text-xs text-gray-200">
-                                                    <strong className="text-[#CC785C]">💡 Fraud Proof:</strong> Verified against external sources, not just trusted by default.
+                                                    <strong className="text-[#CC785C]">💡 Fraud Proof System:</strong> Claims are verified against external sources using deterministic checks. Anyone can independently verify these results.
                                                 </div>
                                             </div>
                                         </>
