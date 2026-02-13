@@ -1469,7 +1469,25 @@
                                                                                                 <strong className="text-gray-300">How it works:</strong> Assigns credibility scores to source domains based on reputation. Academic (.edu), government (.gov), and established news/reference sites score higher. The scores are averaged across all sources.
                                                                                             </div>
                                                                                             <div className="text-gray-400 mt-2 break-words">
-                                                                                                <strong className="text-gray-300">Scoring:</strong> High credibility (90): Wikipedia, .edu, .gov, Nature, Science. Medium (70): Forbes, Bloomberg, WSJ. Low (40): Blogspot, WordPress. Unknown (60): Other domains.
+                                                                                                <strong className="text-gray-300">Scoring tiers:</strong>
+                                                                                            </div>
+                                                                                            <div className="ml-2 mt-1 space-y-1.5 text-gray-400">
+                                                                                                <div>
+                                                                                                    <span className="text-green-400 font-medium">High (90):</span>{' '}
+                                                                                                    Wikipedia, .edu, .gov, Nature, Science, NYT, BBC, Reuters, AP News, PBS, arXiv, Britannica, NIH, CDC
+                                                                                                </div>
+                                                                                                <div>
+                                                                                                    <span className="text-yellow-400 font-medium">Medium (70):</span>{' '}
+                                                                                                    Forbes, Bloomberg, WSJ, The Guardian, Washington Post, CNN
+                                                                                                </div>
+                                                                                                <div>
+                                                                                                    <span className="text-orange-400 font-medium">Low (40):</span>{' '}
+                                                                                                    Medium, Blogspot, WordPress, Tumblr
+                                                                                                </div>
+                                                                                                <div>
+                                                                                                    <span className="text-gray-500 font-medium">Unknown (60):</span>{' '}
+                                                                                                    All other domains
+                                                                                                </div>
                                                                                             </div>
                                                                                             <div className="text-gray-400 mt-2 break-words">
                                                                                                 <strong className="text-gray-300">Success criteria:</strong> Average credibility score must be ≥60/100.
