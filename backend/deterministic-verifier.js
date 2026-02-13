@@ -426,17 +426,17 @@ class DeterministicVerifier {
   getDomainCredibilityScore(domain) {
     const highCredibility = [
       'wikipedia.org', 'edu', 'gov', 'nature.com', 'science.org',
-      'nytimes.com', 'bbc.com', 'reuters.com', 'arxiv.org',
-      'britannica.com', 'nih.gov', 'cdc.gov'
+      'nytimes.com', 'bbc.com', 'reuters.com', 'apnews.com', 'pbs.org',
+      'arxiv.org', 'britannica.com', 'nih.gov', 'cdc.gov'
     ];
 
     const mediumCredibility = [
-      'medium.com', 'forbes.com', 'bloomberg.com', 'wsj.com',
+      'forbes.com', 'bloomberg.com', 'wsj.com',
       'theguardian.com', 'washingtonpost.com', 'cnn.com'
     ];
 
     const lowCredibility = [
-      'blogspot.com', 'wordpress.com', 'tumblr.com'
+      'medium.com', 'blogspot.com', 'wordpress.com', 'tumblr.com'
     ];
 
     // Check high credibility
