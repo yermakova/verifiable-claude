@@ -61,7 +61,6 @@
             'summarize thinking fast and slow',
             'why did russia invade ukraine',
             'why is russia banned from olympics but not the US',
-            'who won the 2026 olympics in figure skating',
             'what is the relationship between sleep and alzheimers'
         ];
 
@@ -474,7 +473,7 @@
                                             >
                                                 i
                                             </button>
-                                            {showTooltip && (
+                                            {showTooltip && ReactDOM.createPortal(
                                                 <div
                                                     className="fixed z-[9999] w-64 p-3 bg-[#1A1A1A] border border-[#3D3D3D] rounded-lg shadow-xl text-xs text-gray-300 leading-relaxed"
                                                     style={{
@@ -484,7 +483,8 @@
                                                 >
                                                     {tooltip}
                                                     <div className="absolute left-0 top-2 w-0 h-0 border-t-4 border-t-transparent border-b-4 border-b-transparent border-r-4 border-r-[#3D3D3D] -translate-x-full"></div>
-                                                </div>
+                                                </div>,
+                                                document.body
                                             )}
                                         </>
                                     )}
@@ -556,181 +556,127 @@
             };
 
             const renderTextWithClaims = (text, claims, userPrompt = '', commitment = null) => {
-                if (!claims || claims.length === 0) {
-                    // Handle bold text when no claims - improved regex
-                    const parts = text.split(/(\*\*[^\*]+\*\*)/g);
-                    return parts.map((part, k) => {
-                        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-                            return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
-                        }
-                        return part;
-                    });
-                }
-
-                // Create a list of claim matches with their positions
-                const matches = [];
-                claims.forEach(claim => {
-                    const claimText = claim.text;
-                    const lowerText = text.toLowerCase();
-                    const lowerClaim = claimText.toLowerCase();
-
-                    // Debug logging
-                    console.log(`Trying to match claim in line: "${claimText}" in "${text.substring(0, 100)}..."`);
-
-
-                    // Try exact match first
-                    let index = lowerText.indexOf(lowerClaim);
-                    if (index !== -1) {
-                        matches.push({
-                            start: index,
-                            end: index + claimText.length,
-                            claim: claim,
-                            text: text.substring(index, index + claimText.length)
-                        });
-                    } else {
-                        // Try matching with trailing punctuation removed from claim
-                        const claimNoPunct = claimText.replace(/[.,;:!?]+$/, '');
-                        const lowerClaimNoPunct = claimNoPunct.toLowerCase();
-
-                        index = lowerText.indexOf(lowerClaimNoPunct);
-                        if (index !== -1) {
-                            matches.push({
-                                start: index,
-                                end: index + claimNoPunct.length,
-                                claim: claim,
-                                text: text.substring(index, index + claimNoPunct.length)
-                            });
-                        } else {
-                        // Try finding key phrases from the claim
-                        // Split claim into significant words (filter out common words)
-                        const significantWords = claimText.toLowerCase()
-                            .replace(/[.,;:!?()]/g, '') // Remove punctuation
-                            .split(/\s+/)
-                            .filter(word => word.length > 2 && !['the', 'and', 'was', 'were', 'that', 'this', 'from', 'with', 'for'].includes(word));
-
-                        console.log(`  Significant words: ${significantWords.join(', ')}`);
-
-                        // Check if multiple significant words appear in this line
-                        const matchCount = significantWords.filter(word => lowerText.includes(word)).length;
-
-                        console.log(`  Match count: ${matchCount}/${significantWords.length}`);
-
-                        // If most significant words match, try to highlight the relevant portion
-                        // Lower threshold: 1 word for short claims, or 50% of words for longer claims
-                        const threshold = significantWords.length <= 2 ? 1 : Math.ceil(significantWords.length * 0.5);
-                        if (matchCount >= threshold && significantWords.length > 0) {
-                            // Find character positions in original text
-                            let matchStart = -1;
-                            let matchEnd = -1;
-
-                            // Find first and last occurrence of significant words
-                            significantWords.forEach(word => {
-                                const wordIndex = lowerText.indexOf(word);
-                                if (wordIndex !== -1) {
-                                    if (matchStart === -1 || wordIndex < matchStart) {
-                                        matchStart = wordIndex;
-                                    }
-                                    const wordEnd = wordIndex + word.length;
-                                    if (matchEnd === -1 || wordEnd > matchEnd) {
-                                        matchEnd = wordEnd;
-                                    }
-                                }
-                            });
-
-                            if (matchStart !== -1 && matchEnd !== -1 && matchEnd > matchStart) {
-                                // Extend to word boundaries
-                                while (matchStart > 0 && /\w/.test(text[matchStart - 1])) matchStart--;
-                                while (matchEnd < text.length && /\w/.test(text[matchEnd])) matchEnd++;
-
-                                matches.push({
-                                    start: matchStart,
-                                    end: matchEnd,
-                                    claim: claim,
-                                    text: text.substring(matchStart, matchEnd)
-                                });
-                                console.log(`  ✓ Fuzzy matched: "${text.substring(matchStart, matchEnd)}"`);
+                // 1. Strip ** markers from text, track which ranges in plain text are bold
+                const stripBoldMarkers = (raw) => {
+                    let plain = '';
+                    const boldRanges = [];
+                    let i = 0;
+                    while (i < raw.length) {
+                        if (i + 1 < raw.length && raw[i] === '*' && raw[i + 1] === '*') {
+                            const close = raw.indexOf('**', i + 2);
+                            if (close !== -1) {
+                                boldRanges.push({ start: plain.length, end: plain.length + (close - i - 2) });
+                                plain += raw.substring(i + 2, close);
+                                i = close + 2;
+                                continue;
                             }
                         }
-                        }
+                        plain += raw[i];
+                        i++;
                     }
-                });
+                    return { plain, boldRanges };
+                };
 
-                // Sort matches by start position
-                matches.sort((a, b) => a.start - b.start);
+                const { plain, boldRanges } = stripBoldMarkers(text);
 
-                // If no matches, just render the text with bold support
-                if (matches.length === 0) {
-                    const parts = text.split(/(\*\*[^\*]+\*\*)/g);
-                    return parts.map((part, k) => {
-                        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-                            return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+                // 2. Do claim matching on plain text (no ** markers to interfere)
+                // Priority: 3=exact, 2=punctuation-stripped, 1=fuzzy
+                const matches = [];
+                if (claims && claims.length > 0) {
+                    const lowerPlain = plain.toLowerCase();
+                    claims.forEach(claim => {
+                        const claimText = claim.text;
+                        const lowerClaim = claimText.toLowerCase();
+
+                        let index = lowerPlain.indexOf(lowerClaim);
+                        if (index !== -1) {
+                            matches.push({ start: index, end: index + claimText.length, claim, priority: 3 });
+                        } else {
+                            const claimNoPunct = claimText.replace(/[.,;:!?]+$/, '');
+                            index = lowerPlain.indexOf(claimNoPunct.toLowerCase());
+                            if (index !== -1) {
+                                matches.push({ start: index, end: index + claimNoPunct.length, claim, priority: 2 });
+                            } else {
+                                const significantWords = claimText.toLowerCase()
+                                    .replace(/[.,;:!?()]/g, '')
+                                    .split(/\s+/)
+                                    .filter(word => word.length > 2 && !['the', 'and', 'was', 'were', 'that', 'this', 'from', 'with', 'for'].includes(word));
+
+                                const matchCount = significantWords.filter(word => lowerPlain.includes(word)).length;
+                                const threshold = significantWords.length <= 2 ? 1 : Math.ceil(significantWords.length * 0.5);
+                                if (matchCount >= threshold && significantWords.length > 0) {
+                                    let matchStart = -1, matchEnd = -1;
+                                    significantWords.forEach(word => {
+                                        const wordIndex = lowerPlain.indexOf(word);
+                                        if (wordIndex !== -1) {
+                                            if (matchStart === -1 || wordIndex < matchStart) matchStart = wordIndex;
+                                            const wordEnd = wordIndex + word.length;
+                                            if (matchEnd === -1 || wordEnd > matchEnd) matchEnd = wordEnd;
+                                        }
+                                    });
+                                    if (matchStart !== -1 && matchEnd !== -1 && matchEnd > matchStart) {
+                                        while (matchStart > 0 && /\w/.test(plain[matchStart - 1])) matchStart--;
+                                        while (matchEnd < plain.length && /\w/.test(plain[matchEnd])) matchEnd++;
+                                        matches.push({ start: matchStart, end: matchEnd, claim, priority: 1 });
+                                    }
+                                }
+                            }
                         }
-                        return part;
                     });
                 }
 
-                // Remove overlapping matches - keep only the first occurrence of each position
-                const uniqueMatches = [];
+                // Sort by priority (highest first), then by position
+                // This ensures exact matches claim positions before fuzzy matches
+                matches.sort((a, b) => b.priority - a.priority || a.start - b.start);
+                const claimRanges = [];
                 const usedPositions = new Set();
-
                 matches.forEach(match => {
                     let hasOverlap = false;
                     for (let i = match.start; i < match.end; i++) {
-                        if (usedPositions.has(i)) {
-                            hasOverlap = true;
-                            break;
-                        }
+                        if (usedPositions.has(i)) { hasOverlap = true; break; }
                     }
-
                     if (!hasOverlap) {
-                        uniqueMatches.push(match);
-                        for (let i = match.start; i < match.end; i++) {
-                            usedPositions.add(i);
-                        }
+                        claimRanges.push(match);
+                        for (let i = match.start; i < match.end; i++) usedPositions.add(i);
                     }
                 });
+                // Re-sort by position for rendering
+                claimRanges.sort((a, b) => a.start - b.start);
 
-                // Helper function to process bold text within a string
-                const processBoldText = (str) => {
-                    const parts = str.split(/(\*\*[^\*]+\*\*)/g);
-                    return parts.map((part, k) => {
-                        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-                            return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
-                        }
-                        return part;
-                    });
-                };
+                // 3. Build segments by merging bold ranges and claim ranges
+                const boundaries = new Set([0, plain.length]);
+                boldRanges.forEach(r => { boundaries.add(r.start); boundaries.add(r.end); });
+                claimRanges.forEach(m => { boundaries.add(m.start); boundaries.add(m.end); });
+                const sorted = [...boundaries].sort((a, b) => a - b);
 
-                // Build the result with clickable claims
                 const result = [];
-                let lastIndex = 0;
+                for (let i = 0; i < sorted.length - 1; i++) {
+                    const segStart = sorted[i];
+                    const segEnd = sorted[i + 1];
+                    if (segStart === segEnd) continue;
 
-                uniqueMatches.forEach((match, i) => {
-                    // Add text before this match
-                    if (match.start > lastIndex) {
-                        const beforeText = text.substring(lastIndex, match.start);
-                        result.push(<span key={`text-${i}`}>{processBoldText(beforeText)}</span>);
+                    const segText = plain.substring(segStart, segEnd);
+                    const segIsBold = boldRanges.some(r => segStart >= r.start && segEnd <= r.end);
+                    const segClaim = claimRanges.find(m => segStart >= m.start && segEnd <= m.end);
+
+                    let content = segIsBold
+                        ? <strong className="font-semibold text-gray-100">{segText}</strong>
+                        : segText;
+
+                    if (segClaim) {
+                        result.push(
+                            <span
+                                key={`seg-${i}`}
+                                onClick={() => handleVerifyClaim(segClaim.claim, userPrompt)}
+                                className="cursor-pointer hover:bg-[#CC785C]/20 hover:text-[#CC785C] transition-colors rounded px-1 border-b border-[#CC785C]/40 border-dotted"
+                                title="Click to verify this claim"
+                            >
+                                {content}
+                            </span>
+                        );
+                    } else {
+                        result.push(<span key={`seg-${i}`}>{content}</span>);
                     }
-
-                    // Add the clickable claim with bold text support
-                    result.push(
-                        <span
-                            key={`claim-${i}`}
-                            onClick={() => handleVerifyClaim(match.claim, userPrompt)}
-                            className="cursor-pointer hover:bg-[#CC785C]/20 hover:text-[#CC785C] transition-colors rounded px-1 border-b border-[#CC785C]/40 border-dotted"
-                            title="Click to verify this claim"
-                        >
-                            {processBoldText(match.text)}
-                        </span>
-                    );
-
-                    lastIndex = match.end;
-                });
-
-                // Add any remaining text
-                if (lastIndex < text.length) {
-                    const remainingText = text.substring(lastIndex);
-                    result.push(<span key="text-end">{processBoldText(remainingText)}</span>);
                 }
 
                 return result;
@@ -940,7 +886,7 @@
                         </div>
 
                         {/* Chat area */}
-                        <div className="flex-1 flex flex-col">
+                        <div className={`flex-1 flex flex-col transition-all duration-300 ${sidePanelOpen ? 'pr-96' : ''}`}>
                             {/* Messages */}
                             <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
                                 {messages.length === 0 ? (
@@ -1067,7 +1013,7 @@
                                             value={prompt}
                                             onChange={(e) => setPrompt(e.target.value)}
                                             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                                            placeholder="Ask about verifiable facts..."
+                                            placeholder="Ask anything and get verifiable facts"
                                             className="flex-1 bg-transparent text-gray-100 placeholder-gray-500 outline-none py-2"
                                             disabled={backendStatus.status !== 'connected' || loading}
                                             autoFocus

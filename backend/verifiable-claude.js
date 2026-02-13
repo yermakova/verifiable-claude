@@ -532,9 +532,10 @@ class VerifiableClaude {
   async generate(prompt, options = {}) {
     console.log('💬 Generating response...');
     
-    // 1. Check cache first
+    // 1. Check cache first (skip cache when search context is provided - we want fresh data)
     const cacheKey = this.getCacheKey(prompt, options);
-    if (this.cache[cacheKey]) {
+    const hasSearchContext = options.searchContext && options.searchContext.results && options.searchContext.results.length > 0;
+    if (this.cache[cacheKey] && !hasSearchContext) {
       console.log('💾 Using cached response (saved $0.02)');
       return this.cache[cacheKey];
     }
