@@ -39,13 +39,15 @@ if (useDeterministic) {
  * GET /health
  */
 app.get('/health', (req, res) => {
-  const hasOpusKey = !!(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.length > 0);
+  const hasAPIKey = !!(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.length > 0);
   const isDeterministic = process.env.DETERMINISTIC_MODE === 'true';
+  // Default model is Sonnet (claude-sonnet-4-20250514)
+  const modelMode = hasAPIKey ? 'sonnet' : 'test';
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    mode: hasOpusKey ? 'opus' : 'test',
-    usingOpus: hasOpusKey,
+    mode: modelMode,
+    usingOpus: false, // Not using Opus by default, using Sonnet
     verificationMode: isDeterministic ? 'deterministic' : 'llm',
     fraudProofsEnabled: isDeterministic
   });
@@ -61,20 +63,25 @@ app.get('/health', (req, res) => {
 app.post('/api/generate', async (req, res) => {
   try {
     const { prompt } = req.body;
-    
+
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
-    
+
     console.log(`📥 Generate request: "${prompt.substring(0, 50)}..."`);
-    
-    const result = await vc.generate(prompt);
-    
+
+    // Search the web FIRST to get current data
+    console.log('🔍 Searching web before generating...');
+    const searchResults = await vc.searchWeb(prompt);
+
+    // Generate response with search context
+    const result = await vc.generate(prompt, { searchContext: searchResults });
+
     res.json({
       success: true,
       data: result
     });
-    
+
   } catch (error) {
     console.error('Generate error:', error);
     res.status(500).json({

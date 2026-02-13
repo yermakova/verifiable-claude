@@ -505,7 +505,27 @@ class VerifiableClaude {
     const model = options.model || 'claude-sonnet-4-20250514';
     return `${model}:${prompt}`;
   }
-  
+
+  /**
+   * Search the web and format results for AI context
+   */
+  async searchWeb(query) {
+    try {
+      const evidence = await this.verifier.searchForEvidence(query, {});
+
+      if (!evidence.results || evidence.results.length === 0) {
+        console.log('⚠️  No search results found');
+        return null;
+      }
+
+      console.log(`✓ Found ${evidence.results.length} web sources`);
+      return evidence;
+    } catch (error) {
+      console.error('Web search error:', error.message);
+      return null;
+    }
+  }
+
   /**
    * Generate a response with verifiable claims
    */
@@ -661,6 +681,31 @@ Do NOT make this claim again. If you're uncertain about facts, say so explicitly
    * Call Claude API
    */
   async callClaude(prompt, options = {}) {
+    // Build the user message - include web search results if provided
+    let userPrompt = prompt;
+
+    if (options.searchContext && options.searchContext.results && options.searchContext.results.length > 0) {
+      const searchResults = options.searchContext.results
+        .map((result, i) => {
+          return `[${i + 1}] ${result.title}
+${result.snippet}
+Source: ${result.url}`;
+        })
+        .join('\n\n');
+
+      userPrompt = `Here are current web search results for context:
+
+${searchResults}
+
+---
+
+Based on the above sources and your knowledge, please answer the following question:
+
+${prompt}
+
+IMPORTANT: Use the web search results above to provide up-to-date, accurate information. If the search results contain current data, use that instead of relying solely on your training data.`;
+    }
+
     const response = await anthropic.messages.create({
       model: options.model || 'claude-sonnet-4-20250514',
       max_tokens: options.maxTokens || 2000,
@@ -672,10 +717,12 @@ IMPORTANT: When answering "who invented/created X" questions:
 - Distinguish between early theoretical work and practical implementations
 - Be precise about who did what, rather than oversimplifying
 
+When web search results are provided, prioritize information from those sources as they contain the most current data.
+
 Format your response to make individual factual claims easy to extract and verify.`,
       messages: [{
         role: 'user',
-        content: prompt
+        content: userPrompt
       }]
     });
 

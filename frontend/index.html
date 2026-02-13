@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Verifiable Claude - Fraud Proofs for LLMs</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -54,9 +57,12 @@
 
         const SUGGESTED_PROMPTS = [
             'who invented fraud proofs',
-            'what is the summary of thinking fast and slow',
-            'why did russian invade ukraine',
-            'who won the olympics in figure skating'
+            'what do we know about kim jong un\'s daughter',
+            'summarize thinking fast and slow',
+            'why did russia invade ukraine',
+            'why is russia banned from olympics but not the US',
+            'who won the 2026 olympics in figure skating',
+            'what is the relationship between sleep and alzheimers'
         ];
 
         const Shield = () => (
@@ -375,14 +381,41 @@
                 setVerification(null);
             };
 
+            const [expandedCheckIndex, setExpandedCheckIndex] = useState(null);
+
             const getVerdictStyle = (verdict) => {
                 if (verdict === 'VERIFIED') return 'text-green-400 bg-green-950/30 border-green-800';
                 if (verdict === 'FALSE') return 'text-red-400 bg-red-950/30 border-red-800';
                 return 'text-yellow-400 bg-yellow-950/30 border-yellow-800';
             };
 
-            const renderFraudProofStage = (number, title, stage, details) => {
+            // Component for a fraud proof stage (must be a component to use hooks)
+            const FraudProofStage = ({ number, title, stage, details, tooltip }) => {
                 const status = stage?.status || 'pending';
+                const [showTooltip, setShowTooltip] = useState(false);
+                const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+                const buttonRef = useRef(null);
+
+                const updateTooltipPosition = () => {
+                    if (buttonRef.current) {
+                        const rect = buttonRef.current.getBoundingClientRect();
+                        setTooltipPos({
+                            x: rect.right + 8,
+                            y: rect.top
+                        });
+                    }
+                };
+
+                const handleMouseEnter = () => {
+                    updateTooltipPosition();
+                    setShowTooltip(true);
+                };
+
+                const handleClick = (e) => {
+                    e.stopPropagation();
+                    updateTooltipPosition();
+                    setShowTooltip(!showTooltip);
+                };
 
                 const getStatusIcon = () => {
                     if (status === 'completed') {
@@ -428,8 +461,33 @@
                         <div className="flex gap-3">
                             {getStatusIcon()}
                             <div className="flex-1 pb-4">
-                                <div className={`font-semibold text-sm ${getStatusColor()}`}>
-                                    {title}
+                                <div className={`flex items-center gap-2 font-semibold text-sm ${getStatusColor()}`}>
+                                    <span>{title}</span>
+                                    {tooltip && (
+                                        <>
+                                            <button
+                                                ref={buttonRef}
+                                                className="w-4 h-4 rounded-full border border-gray-500 flex items-center justify-center text-[10px] text-gray-400 hover:bg-gray-700/30 hover:text-gray-300 transition-colors cursor-help"
+                                                onMouseEnter={handleMouseEnter}
+                                                onMouseLeave={() => setShowTooltip(false)}
+                                                onClick={handleClick}
+                                            >
+                                                i
+                                            </button>
+                                            {showTooltip && (
+                                                <div
+                                                    className="fixed z-[9999] w-64 p-3 bg-[#1A1A1A] border border-[#3D3D3D] rounded-lg shadow-xl text-xs text-gray-300 leading-relaxed"
+                                                    style={{
+                                                        left: `${tooltipPos.x}px`,
+                                                        top: `${tooltipPos.y}px`
+                                                    }}
+                                                >
+                                                    {tooltip}
+                                                    <div className="absolute left-0 top-2 w-0 h-0 border-t-4 border-t-transparent border-b-4 border-b-transparent border-r-4 border-r-[#3D3D3D] -translate-x-full"></div>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                                 {status !== 'pending' && details && (
                                     <div className="mt-2 p-2 bg-[#1A1A1A] rounded border border-[#2D2D2D]">
@@ -462,8 +520,17 @@
                         return <h3 key={lineIndex} className="text-lg font-bold text-gray-100 mt-4 mb-2">{line.substring(3)}</h3>;
                     }
 
-                    // List items (- Item)
+                    // List items (- Item or • Item)
                     if (line.trim().startsWith('- ')) {
+                        const content = line.trim().substring(2);
+                        return (
+                            <div key={lineIndex} className="ml-4 text-gray-300 mb-1">
+                                • {renderTextWithClaims(content, claims, userPrompt, commitment)}
+                            </div>
+                        );
+                    }
+
+                    if (line.trim().startsWith('• ')) {
                         const content = line.trim().substring(2);
                         return (
                             <div key={lineIndex} className="ml-4 text-gray-300 mb-1">
@@ -490,10 +557,10 @@
 
             const renderTextWithClaims = (text, claims, userPrompt = '', commitment = null) => {
                 if (!claims || claims.length === 0) {
-                    // Handle bold text when no claims
-                    const parts = text.split(/(\*\*.*?\*\*)/g);
+                    // Handle bold text when no claims - improved regex
+                    const parts = text.split(/(\*\*[^\*]+\*\*)/g);
                     return parts.map((part, k) => {
-                        if (part.startsWith('**') && part.endsWith('**')) {
+                        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
                             return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
                         }
                         return part;
@@ -593,9 +660,9 @@
 
                 // If no matches, just render the text with bold support
                 if (matches.length === 0) {
-                    const parts = text.split(/(\*\*.*?\*\*)/g);
+                    const parts = text.split(/(\*\*[^\*]+\*\*)/g);
                     return parts.map((part, k) => {
-                        if (part.startsWith('**') && part.endsWith('**')) {
+                        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
                             return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
                         }
                         return part;
@@ -625,9 +692,9 @@
 
                 // Helper function to process bold text within a string
                 const processBoldText = (str) => {
-                    const parts = str.split(/(\*\*.*?\*\*)/g);
+                    const parts = str.split(/(\*\*[^\*]+\*\*)/g);
                     return parts.map((part, k) => {
-                        if (part.startsWith('**') && part.endsWith('**')) {
+                        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
                             return <strong key={k} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
                         }
                         return part;
@@ -684,11 +751,17 @@
                                 {backendStatus.status === 'checking' && (
                                     <span className="text-gray-400">● Checking...</span>
                                 )}
+                                {backendStatus.status === 'connected' && backendStatus.mode === 'sonnet' && (
+                                    <span className="text-green-400">● Using Sonnet</span>
+                                )}
                                 {backendStatus.status === 'connected' && backendStatus.mode === 'opus' && (
-                                    <span className="text-green-400">● Full mode engaged</span>
+                                    <span className="text-green-400">● Using Opus</span>
                                 )}
                                 {backendStatus.status === 'connected' && backendStatus.mode === 'test' && (
-                                    <span className="text-yellow-400">● Using test data</span>
+                                    <span className="text-yellow-400">● Using Test Data</span>
+                                )}
+                                {backendStatus.status === 'connected' && backendStatus.mode && backendStatus.mode !== 'sonnet' && backendStatus.mode !== 'opus' && backendStatus.mode !== 'test' && (
+                                    <span className="text-green-400">● Using {backendStatus.mode.charAt(0).toUpperCase() + backendStatus.mode.slice(1)}</span>
                                 )}
                                 {backendStatus.status === 'connected' && !backendStatus.mode && (
                                     <span className="text-green-400">● Connected</span>
@@ -706,11 +779,11 @@
                     {/* Main content area with chat and side panel */}
                     <div className="flex-1 flex overflow-hidden">
                         {/* Left Sidebar - Fraud Proof Tracker */}
-                        <div className={`w-80 border-r border-[#2D2D2D] bg-[#0A0A0A] overflow-y-auto transition-all duration-300 ${fraudProofStages ? 'opacity-100' : 'opacity-50'}`}>
-                            <div className="p-4 border-b border-[#2D2D2D] sticky top-0 bg-[#0A0A0A] z-10">
-                                <h2 className="text-sm font-bold text-[#CC785C] flex items-center gap-2">
+                        <div className={`w-80 overflow-y-auto transition-all duration-300 ${fraudProofStages ? 'opacity-100' : 'opacity-50'} backdrop-blur-xl bg-black/10`} style={{backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)'}}>
+                            <div className="p-4 border-b border-[#2D2D2D] sticky top-0 bg-black/10 backdrop-blur-md z-10">
+                                <h2 className="text-sm font-bold text-white flex items-center gap-2">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                                     </svg>
                                     FRAUD PROOF TRACKER
                                 </h2>
@@ -721,11 +794,11 @@
                                 {fraudProofStages ? (
                                     <>
                                         {/* Stage 1: Commitment */}
-                                        {renderFraudProofStage(
-                                            '1',
-                                            'Commitment Phase',
-                                            fraudProofStages.commitment,
-                                            fraudProofStages.commitment?.status === 'completed' && fraudProofStages.commitment.data && (
+                                        <FraudProofStage
+                                            number='1'
+                                            title='Commitment Phase'
+                                            stage={fraudProofStages.commitment}
+                                            details={fraudProofStages.commitment?.status === 'completed' && fraudProofStages.commitment.data && (
                                                 <div className="text-xs space-y-1">
                                                     <div className="font-mono text-gray-400">
                                                         Root: {fraudProofStages.commitment.data.root?.substring(0, 16)}...
@@ -737,15 +810,16 @@
                                                         {new Date(fraudProofStages.commitment.data.timestamp).toLocaleTimeString()}
                                                     </div>
                                                 </div>
-                                            )
-                                        )}
+                                            )}
+                                            tooltip="The AI locks in all its claims with a cryptographic 'fingerprint' (Merkle root). Like signing a contract - it can't change what it said later."
+                                        />
 
                                         {/* Stage 2: Challenge */}
-                                        {renderFraudProofStage(
-                                            '2',
-                                            'Challenge Initiated',
-                                            fraudProofStages.challenge,
-                                            fraudProofStages.challenge?.status !== 'pending' && fraudProofStages.challenge?.data && (
+                                        <FraudProofStage
+                                            number='2'
+                                            title='Challenge Initiated'
+                                            stage={fraudProofStages.challenge}
+                                            details={fraudProofStages.challenge?.status !== 'pending' && fraudProofStages.challenge?.data && (
                                                 <div className="text-xs space-y-1">
                                                     <div className="text-gray-400">
                                                         "{fraudProofStages.challenge.data.claimText?.substring(0, 40)}..."
@@ -759,15 +833,16 @@
                                                         </div>
                                                     )}
                                                 </div>
-                                            )
-                                        )}
+                                            )}
+                                            tooltip="You picked a specific claim to verify. The system pulls up the cryptographic 'receipt' (Merkle proof) showing this claim was in the original response."
+                                        />
 
                                         {/* Stage 3: Evidence Gathering */}
-                                        {renderFraudProofStage(
-                                            '3',
-                                            'Evidence Gathering',
-                                            fraudProofStages.evidenceGathering,
-                                            fraudProofStages.evidenceGathering?.status === 'completed' && fraudProofStages.evidenceGathering?.data && (
+                                        <FraudProofStage
+                                            number='3'
+                                            title='Evidence Gathering'
+                                            stage={fraudProofStages.evidenceGathering}
+                                            details={fraudProofStages.evidenceGathering?.status === 'completed' && fraudProofStages.evidenceGathering?.data && (
                                                 <div className="text-xs space-y-1">
                                                     <div className="text-gray-400">
                                                         Sources found: {fraudProofStages.evidenceGathering.data.sourcesFound}
@@ -776,19 +851,20 @@
                                                         Query: {fraudProofStages.evidenceGathering.data.searchQuery}
                                                     </div>
                                                 </div>
-                                            )
-                                        )}
+                                            )}
+                                            tooltip="The system searches the web for sources that could verify or disprove the claim. Think of it like fact-checking with Google."
+                                        />
 
                                         {/* Stage 4: Deterministic Checks */}
-                                        {renderFraudProofStage(
-                                            '4',
-                                            'Deterministic Verification',
-                                            fraudProofStages.deterministicChecks,
-                                            fraudProofStages.deterministicChecks?.status === 'completed' && fraudProofStages.deterministicChecks?.data && (
+                                        <FraudProofStage
+                                            number='4'
+                                            title='Deterministic Verification'
+                                            stage={fraudProofStages.deterministicChecks}
+                                            details={fraudProofStages.deterministicChecks?.status === 'completed' && fraudProofStages.deterministicChecks?.data && (
                                                 <div className="text-xs space-y-1">
                                                     {fraudProofStages.deterministicChecks.data.map((check, i) => (
-                                                        <div key={i} className={`flex items-start gap-2 ${check.passed ? 'text-green-400' : 'text-red-400'}`}>
-                                                            <span>{check.passed ? '✓' : '✗'}</span>
+                                                        <div key={i} className={`flex items-start gap-2 ${check.notApplicable ? 'text-gray-400' : check.passed ? 'text-green-400' : 'text-red-400'}`}>
+                                                            <span>{check.notApplicable ? '○' : check.passed ? '✓' : '✗'}</span>
                                                             <div className="flex-1">
                                                                 <div className="font-medium">{check.name}</div>
                                                                 <div className="text-gray-500 text-[10px]">{check.reason}</div>
@@ -796,15 +872,16 @@
                                                         </div>
                                                     ))}
                                                 </div>
-                                            )
-                                        )}
+                                            )}
+                                            tooltip="Runs 5 automated checks on the evidence - like a checklist. Same inputs always give the same results. No AI judgment, just rules."
+                                        />
 
                                         {/* Stage 5: Merkle Proof Verification */}
-                                        {renderFraudProofStage(
-                                            '5',
-                                            'Merkle Proof Verification',
-                                            fraudProofStages.merkleProofVerification,
-                                            fraudProofStages.merkleProofVerification?.status === 'completed' && fraudProofStages.merkleProofVerification?.data && (
+                                        <FraudProofStage
+                                            number='5'
+                                            title='Merkle Proof Verification'
+                                            stage={fraudProofStages.merkleProofVerification}
+                                            details={fraudProofStages.merkleProofVerification?.status === 'completed' && fraudProofStages.merkleProofVerification?.data && (
                                                 <div className="text-xs space-y-1">
                                                     <div className={fraudProofStages.merkleProofVerification.data.proofValid ? 'text-green-400' : 'text-red-400'}>
                                                         {fraudProofStages.merkleProofVerification.data.proofValid ? '✓ Proof Valid' : '✗ Proof Invalid'}
@@ -813,15 +890,16 @@
                                                         Claim committed in original response
                                                     </div>
                                                 </div>
-                                            )
-                                        )}
+                                            )}
+                                            tooltip="Mathematically proves the claim was actually in the AI's original response. Like checking if a page is really in a book using cryptography."
+                                        />
 
                                         {/* Stage 6: Verdict */}
-                                        {renderFraudProofStage(
-                                            '6',
-                                            'Final Verdict',
-                                            fraudProofStages.verdict,
-                                            fraudProofStages.verdict?.status === 'completed' && fraudProofStages.verdict?.data && (
+                                        <FraudProofStage
+                                            number='6'
+                                            title='Final Verdict'
+                                            stage={fraudProofStages.verdict}
+                                            details={fraudProofStages.verdict?.status === 'completed' && fraudProofStages.verdict?.data && (
                                                 <div className="text-xs space-y-1">
                                                     <div className={`font-bold ${
                                                         fraudProofStages.verdict.data.verdict === 'VERIFIED' ? 'text-green-400' :
@@ -836,8 +914,9 @@
                                                         </div>
                                                     )}
                                                 </div>
-                                            )
-                                        )}
+                                            )}
+                                            tooltip="Based on all the checks, determines if the claim is verified, uncertain, or proven false. If fraud is detected, anyone can independently verify this proof."
+                                        />
                                     </>
                                 ) : (
                                     <div className="text-center text-gray-600 py-8 text-sm">
@@ -1058,17 +1137,181 @@
                                                     </h3>
                                                     <div className="space-y-2">
                                                         {verification.checks.map((check, i) => (
-                                                            <div key={i} className={`p-3 rounded-lg border ${check.passed ? 'bg-green-950/20 border-green-800/30' : 'bg-red-950/20 border-red-800/30'}`}>
+                                                            <div key={i} className={`p-3 rounded-lg border ${
+                                                                check.notApplicable ? 'bg-gray-900/20 border-gray-600/30' :
+                                                                check.passed ? 'bg-green-950/20 border-green-800/30' : 'bg-red-950/20 border-red-800/30'
+                                                            }`}>
                                                                 <div className="flex items-start gap-2">
-                                                                    <span className={`text-sm ${check.passed ? 'text-green-400' : 'text-red-400'}`}>
-                                                                        {check.passed ? '✓' : '✗'}
+                                                                    <span className={`text-sm ${
+                                                                        check.notApplicable ? 'text-gray-400' :
+                                                                        check.passed ? 'text-green-400' : 'text-red-400'
+                                                                    }`}>
+                                                                        {check.notApplicable ? '○' : check.passed ? '✓' : '✗'}
                                                                     </span>
                                                                     <div className="flex-1">
-                                                                        <div className={`font-medium text-sm ${check.passed ? 'text-green-400' : 'text-red-400'}`}>
-                                                                            {check.name}
-                                                                            {check.critical && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-red-900/30 border border-red-800/50 rounded">CRITICAL</span>}
+                                                                        <div className="flex items-center justify-between">
+                                                                            <div className={`font-medium text-sm ${
+                                                                                check.notApplicable ? 'text-gray-400' :
+                                                                                check.passed ? 'text-green-400' : 'text-red-400'
+                                                                            }`}>
+                                                                                {check.name}
+                                                                                {check.notApplicable && <span className="ml-2 text-[10px] text-gray-500">N/A</span>}
+                                                                            </div>
+                                                                            <button
+                                                                                onClick={() => setExpandedCheckIndex(expandedCheckIndex === i ? null : i)}
+                                                                                className={`text-[10px] px-2 py-1 rounded border transition-colors ${
+                                                                                    check.notApplicable
+                                                                                        ? 'bg-gray-800/40 hover:bg-gray-800/60 text-gray-400 border-gray-700/50' :
+                                                                                    check.passed
+                                                                                        ? 'bg-gray-800/40 hover:bg-gray-800/60 text-gray-300 border-gray-700/50'
+                                                                                        : 'bg-red-900/40 hover:bg-red-900/60 text-red-300 border-red-800/50'
+                                                                                }`}
+                                                                            >
+                                                                                {expandedCheckIndex === i ? 'Hide Details' : 'See Details'}
+                                                                            </button>
                                                                         </div>
-                                                                        <div className="text-xs text-gray-300 mt-1">{check.reason}</div>
+                                                                        <div className={`text-xs mt-1 ${check.notApplicable ? 'text-gray-400' : 'text-gray-300'}`}>{check.reason}</div>
+
+                                                                        {/* Expanded details for all checks */}
+                                                                        {expandedCheckIndex === i && (
+                                                                            <div className={`mt-3 p-3 bg-black/30 rounded border overflow-hidden ${
+                                                                                check.notApplicable ? 'border-gray-600/30' :
+                                                                                check.passed ? 'border-green-900/30' : 'border-red-900/30'
+                                                                            }`}>
+                                                                                <div className={`text-xs font-semibold mb-2 ${
+                                                                                    check.notApplicable ? 'text-gray-400' :
+                                                                                    check.passed ? 'text-green-300' : 'text-red-300'
+                                                                                }`}>
+                                                                                    {check.notApplicable ? 'Check Details:' : check.passed ? 'Check Details:' : 'Failure Details:'}
+                                                                                </div>
+                                                                                <div className="space-y-2 text-[11px] overflow-hidden">
+                                                                                    {check.name === 'URL Validity' && (
+                                                                                        <>
+                                                                                            <div className="text-gray-400 break-words">
+                                                                                                <strong className="text-gray-300">How it works:</strong> Each URL from the evidence is tested with an HTTP request to verify it's accessible. URLs returning status codes 200-399 are considered valid.
+                                                                                            </div>
+                                                                                            <div className="text-gray-400 mt-2 break-words">
+                                                                                                <strong className="text-gray-300">Success criteria:</strong> At least 50% of checked URLs must be accessible.
+                                                                                            </div>
+                                                                                            {check.evidence && check.evidence.length > 0 && (
+                                                                                                <>
+                                                                                                    <div className="text-gray-400 mt-2">
+                                                                                                        <strong className="text-gray-300">Results:</strong>
+                                                                                                    </div>
+                                                                                                    <div className="space-y-1.5 ml-2">
+                                                                                                        {check.evidence.map((urlCheck, idx) => (
+                                                                                                            <div key={idx} className={`${urlCheck.exists ? 'text-green-400' : 'text-red-400'} break-all`}>
+                                                                                                                {urlCheck.exists ? '✓' : '✗'} {urlCheck.url}
+                                                                                                                {urlCheck.error && <div className="ml-4 text-[10px] text-gray-500 break-words">Error: {urlCheck.error}</div>}
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </>
+                                                                                    )}
+                                                                                    {check.name === 'Quote Exact Match' && (
+                                                                                        <>
+                                                                                            <div className="text-gray-400 break-words">
+                                                                                                <strong className="text-gray-300">How it works:</strong> Extracts all quoted text from the claim (text within quotation marks) and searches for exact matches in the evidence snippets. This ensures direct quotes are accurately sourced.
+                                                                                            </div>
+                                                                                            <div className="text-gray-400 mt-2 break-words">
+                                                                                                <strong className="text-gray-300">Success criteria:</strong> All quoted text must be found exactly in the evidence sources.
+                                                                                            </div>
+                                                                                            {check.evidence && check.evidence.length > 0 && (
+                                                                                                <>
+                                                                                                    <div className="text-gray-400 mt-2">
+                                                                                                        <strong className="text-gray-300">Results:</strong>
+                                                                                                    </div>
+                                                                                                    <div className="space-y-1 ml-2">
+                                                                                                        {check.evidence.map((quote, idx) => (
+                                                                                                            <div key={idx} className={`${quote.found ? 'text-green-400' : 'text-red-400'} break-words`}>
+                                                                                                                {quote.found ? '✓' : '✗'} "{quote.quote}"
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </>
+                                                                                    )}
+                                                                                    {check.name === 'Entity Consistency' && (
+                                                                                        <>
+                                                                                            <div className="text-gray-400 break-words">
+                                                                                                <strong className="text-gray-300">How it works:</strong> Uses natural language processing (NLP) to identify named entities (people, places, organizations) in the claim, then checks how many evidence sources mention each entity. Multiple sources mentioning the same entity increases confidence.
+                                                                                            </div>
+                                                                                            <div className="text-gray-400 mt-2 break-words">
+                                                                                                <strong className="text-gray-300">Success criteria:</strong> At least 50% of named entities must appear in 2 or more sources.
+                                                                                            </div>
+                                                                                            {check.evidence && check.evidence.length > 0 && (
+                                                                                                <>
+                                                                                                    <div className="text-gray-400 mt-2">
+                                                                                                        <strong className="text-gray-300">Results:</strong>
+                                                                                                    </div>
+                                                                                                    <div className="space-y-1 ml-2">
+                                                                                                        {check.evidence.map((entity, idx) => (
+                                                                                                            <div key={idx} className={`${entity.sourcesMentioning >= 2 ? 'text-green-400' : 'text-red-400'} break-words`}>
+                                                                                                                {entity.sourcesMentioning >= 2 ? '✓' : '✗'} {entity.entity} (found in {entity.sourcesMentioning}/{entity.totalSources} sources)
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </>
+                                                                                    )}
+                                                                                    {check.name === 'Source Credibility' && (
+                                                                                        <>
+                                                                                            <div className="text-gray-400 break-words">
+                                                                                                <strong className="text-gray-300">How it works:</strong> Assigns credibility scores to source domains based on reputation. Academic (.edu), government (.gov), and established news/reference sites score higher. The scores are averaged across all sources.
+                                                                                            </div>
+                                                                                            <div className="text-gray-400 mt-2 break-words">
+                                                                                                <strong className="text-gray-300">Scoring:</strong> High credibility (90): Wikipedia, .edu, .gov, Nature, Science. Medium (70): Forbes, Bloomberg, WSJ. Low (40): Blogspot, WordPress. Unknown (60): Other domains.
+                                                                                            </div>
+                                                                                            <div className="text-gray-400 mt-2 break-words">
+                                                                                                <strong className="text-gray-300">Success criteria:</strong> Average credibility score must be ≥60/100.
+                                                                                            </div>
+                                                                                            {check.evidence && check.evidence.length > 0 && (
+                                                                                                <>
+                                                                                                    <div className="text-gray-400 mt-2">
+                                                                                                        <strong className="text-gray-300">Results:</strong>
+                                                                                                    </div>
+                                                                                                    <div className="space-y-1 ml-2">
+                                                                                                        {check.evidence.map((source, idx) => (
+                                                                                                            <div key={idx} className={`${source.score >= 60 ? 'text-green-400' : 'text-yellow-400'} break-all`}>
+                                                                                                                {source.domain}: {source.score}/100
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </>
+                                                                                    )}
+                                                                                    {check.name === 'Temporal Consistency' && (
+                                                                                        <>
+                                                                                            <div className="text-gray-400 break-words">
+                                                                                                <strong className="text-gray-300">How it works:</strong> Extracts dates and years from the claim using pattern matching (formats like "2024", "Jan 1, 2024", "1/1/2024"), then searches for these dates in the evidence sources to confirm temporal accuracy.
+                                                                                            </div>
+                                                                                            <div className="text-gray-400 mt-2 break-words">
+                                                                                                <strong className="text-gray-300">Success criteria:</strong> At least 50% of dates/years must be confirmed in at least one source.
+                                                                                            </div>
+                                                                                            {check.evidence && check.evidence.length > 0 && (
+                                                                                                <>
+                                                                                                    <div className="text-gray-400 mt-2">
+                                                                                                        <strong className="text-gray-300">Results:</strong>
+                                                                                                    </div>
+                                                                                                    <div className="space-y-1 ml-2">
+                                                                                                        {check.evidence.map((dateCheck, idx) => (
+                                                                                                            <div key={idx} className={`${dateCheck.sourcesConfirming > 0 ? 'text-green-400' : 'text-red-400'} break-words`}>
+                                                                                                                {dateCheck.sourcesConfirming > 0 ? '✓' : '✗'} {dateCheck.date} (confirmed in {dateCheck.sourcesConfirming}/{dateCheck.totalSources} sources)
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </div>

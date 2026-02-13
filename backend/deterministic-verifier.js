@@ -1,5 +1,6 @@
 const https = require('https');
 const http = require('http');
+const nlp = require('compromise');
 
 /**
  * Deterministic Claim Verifier
@@ -39,9 +40,11 @@ class DeterministicVerifier {
     results.checks = checks;
 
     // Aggregate verdict (deterministic logic)
-    const passedChecks = checks.filter(c => c.passed).length;
-    const totalChecks = checks.length;
-    const criticalFailures = checks.filter(c => c.critical && !c.passed);
+    // Filter out N/A checks from the calculation
+    const applicableChecks = checks.filter(c => !c.notApplicable);
+    const passedChecks = applicableChecks.filter(c => c.passed).length;
+    const totalChecks = applicableChecks.length;
+    const criticalFailures = applicableChecks.filter(c => c.critical && !c.passed);
 
     if (criticalFailures.length > 0) {
       results.verdict = 'FRAUD_PROVEN';
@@ -90,7 +93,7 @@ class DeterministicVerifier {
     }
 
     const urlChecks = await Promise.all(
-      evidence.results.slice(0, 3).map(async (result) => {
+      evidence.results.map(async (result) => {
         try {
           const exists = await this.urlExists(result.url);
           return { url: result.url, exists };
@@ -125,6 +128,7 @@ class DeterministicVerifier {
       return {
         name: 'Quote Exact Match',
         passed: true,
+        notApplicable: true,
         critical: false,
         reason: 'No quoted text in claim',
         evidence: []
@@ -162,6 +166,7 @@ class DeterministicVerifier {
       return {
         name: 'Entity Consistency',
         passed: true,
+        notApplicable: true,
         critical: false,
         reason: 'No named entities detected',
         evidence: []
@@ -232,6 +237,7 @@ class DeterministicVerifier {
       return {
         name: 'Temporal Consistency',
         passed: true,
+        notApplicable: true,
         critical: false,
         reason: 'No temporal claims detected',
         evidence: []
@@ -293,21 +299,50 @@ class DeterministicVerifier {
   // ============================================================================
 
   /**
-   * Check if URL exists (HEAD request)
+   * Check if URL exists (HEAD request with fallback to GET)
    */
   async urlExists(url) {
-    return new Promise((resolve, reject) => {
+    // Try HEAD first
+    const headResult = await this.tryUrlRequest(url, 'HEAD');
+    if (headResult) return true;
+
+    // Fallback to GET if HEAD fails (some servers block HEAD)
+    const getResult = await this.tryUrlRequest(url, 'GET');
+    return getResult;
+  }
+
+  /**
+   * Try a single URL request with proper headers
+   */
+  async tryUrlRequest(url, method) {
+    return new Promise((resolve) => {
       try {
         const urlObj = new URL(url);
         const client = urlObj.protocol === 'https:' ? https : http;
 
-        const req = client.request(
-          url,
-          { method: 'HEAD', timeout: 5000 },
-          (res) => {
-            resolve(res.statusCode >= 200 && res.statusCode < 400);
+        const options = {
+          method: method,
+          timeout: 10000, // Increased to 10 seconds
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; VerifiableClaude/1.0; +https://github.com/verifiable-claude)',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br'
           }
-        );
+        };
+
+        const req = client.request(url, options, (res) => {
+          // Immediately consume the response stream to prevent timeout
+          // This is crucial for HEAD requests especially
+          res.resume();
+
+          // Accept 2xx and 3xx status codes
+          const success = res.statusCode >= 200 && res.statusCode < 400;
+          resolve(success);
+
+          // Clean up
+          res.on('end', () => {});
+        });
 
         req.on('error', () => resolve(false));
         req.on('timeout', () => {
@@ -338,16 +373,20 @@ class DeterministicVerifier {
   }
 
   /**
-   * Extract named entities (simple pattern-based)
+   * Extract named entities using NLP
    */
   extractEntities(text) {
-    // Capital words that might be entities
-    const pattern = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g;
-    const matches = text.match(pattern) || [];
+    const doc = nlp(text);
 
-    // Filter out common words
-    const stopWords = ['The', 'A', 'An', 'In', 'On', 'At', 'To', 'For', 'Of', 'With'];
-    return [...new Set(matches.filter(m => !stopWords.includes(m)))];
+    // Extract people, places, and organizations
+    const people = doc.people().out('array');
+    const places = doc.places().out('array');
+    const organizations = doc.organizations().out('array');
+
+    // Combine and deduplicate
+    const entities = [...new Set([...people, ...places, ...organizations])];
+
+    return entities;
   }
 
   /**
