@@ -44,6 +44,10 @@
             overflow: hidden;
         }
 
+        /* Hide scrollbar for horizontal scroll areas */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
         /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
@@ -70,7 +74,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+        const API_BASE_URL = (window.location.hostname === 'localhost' || window.location.protocol === 'file:') ? 'http://localhost:3001' : '';
 
         const SUGGESTED_PROMPTS = [
             'who invented fraud proofs',
@@ -108,6 +112,7 @@
             const [merkleModalOpen, setMerkleModalOpen] = useState(false);
             const [merkleProofHashes, setMerkleProofHashes] = useState(null);
             const [whyModalOpen, setWhyModalOpen] = useState(false);
+            const [mobileActiveTab, setMobileActiveTab] = useState('chat');
             const messagesEndRef = useRef(null);
             const chatContainerRef = useRef(null);
 
@@ -436,6 +441,7 @@
                 setSidePanelOpen(false);
                 setSelectedClaim(null);
                 setVerification(null);
+                setMobileActiveTab('chat');
             };
 
             const [expandedCheckIndex, setExpandedCheckIndex] = useState(null);
@@ -463,9 +469,17 @@
                     }
                 };
 
+                const isMobile = () => window.innerWidth < 768;
+
                 const handleMouseEnter = () => {
+                    if (isMobile()) return;
                     updateTooltipPosition();
                     setShowTooltip(true);
+                };
+
+                const handleMouseLeave = () => {
+                    if (isMobile()) return;
+                    setShowTooltip(false);
                 };
 
                 const handleClick = (e) => {
@@ -526,22 +540,36 @@
                                                 ref={buttonRef}
                                                 className="w-4 h-4 rounded-full border border-gray-500 flex items-center justify-center text-[10px] text-gray-400 hover:bg-gray-700/30 hover:text-gray-300 transition-colors cursor-help"
                                                 onMouseEnter={handleMouseEnter}
-                                                onMouseLeave={() => setShowTooltip(false)}
+                                                onMouseLeave={handleMouseLeave}
                                                 onClick={handleClick}
                                             >
                                                 i
                                             </button>
                                             {showTooltip && ReactDOM.createPortal(
-                                                <div
-                                                    className="fixed z-[9999] w-64 p-3 bg-[#1A1A1A] border border-[#3D3D3D] rounded-lg shadow-xl text-xs text-gray-300 leading-relaxed"
-                                                    style={{
-                                                        left: `${tooltipPos.x}px`,
-                                                        top: `${tooltipPos.y}px`
-                                                    }}
-                                                >
-                                                    {tooltip}
-                                                    <div className="absolute left-0 top-2 w-0 h-0 border-t-4 border-t-transparent border-b-4 border-b-transparent border-r-4 border-r-[#3D3D3D] -translate-x-full"></div>
-                                                </div>,
+                                                isMobile() ? (
+                                                    <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setShowTooltip(false)}>
+                                                        <div className="absolute inset-0 bg-black/50" />
+                                                        <div className="relative z-10 w-72 p-4 bg-[#1A1A1A] border border-[#3D3D3D] rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+                                                            <button onClick={() => setShowTooltip(false)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-200 p-1">
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                                </svg>
+                                                            </button>
+                                                            <div className="text-xs text-gray-300 leading-relaxed pr-6">{tooltip}</div>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div
+                                                        className="fixed z-[9999] w-64 p-3 bg-[#1A1A1A] border border-[#3D3D3D] rounded-lg shadow-xl text-xs text-gray-300 leading-relaxed"
+                                                        style={{
+                                                            left: `${tooltipPos.x}px`,
+                                                            top: `${tooltipPos.y}px`
+                                                        }}
+                                                    >
+                                                        {tooltip}
+                                                        <div className="absolute left-0 top-2 w-0 h-0 border-t-4 border-t-transparent border-b-4 border-b-transparent border-r-4 border-r-[#3D3D3D] -translate-x-full"></div>
+                                                    </div>
+                                                ),
                                                 document.body
                                             )}
                                         </>
@@ -573,7 +601,7 @@
                     <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={onClose}>
                         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
                         <div
-                            className="relative z-10 w-[560px] max-h-[85vh] bg-[#1E1E1E] border border-[#3D3D3D] rounded-xl shadow-2xl overflow-hidden flex flex-col"
+                            className="relative z-10 w-full max-w-[560px] mx-4 max-h-[90vh] md:max-h-[85vh] bg-[#1E1E1E] border border-[#3D3D3D] rounded-xl shadow-2xl overflow-hidden flex flex-col"
                             onClick={e => e.stopPropagation()}
                         >
                             {/* Header */}
@@ -867,7 +895,7 @@
                             <span
                                 key={`seg-${i}`}
                                 onClick={() => handleVerifyClaim(segClaim.claim, userPrompt)}
-                                className="cursor-pointer hover:bg-[#CC785C]/20 hover:text-[#CC785C] transition-colors rounded px-1 border-b border-[#CC785C]/40 border-dotted"
+                                className="cursor-pointer hover:bg-[#CC785C]/20 hover:text-[#CC785C] transition-colors rounded px-1 py-1 border-b border-[#CC785C]/40 border-dotted"
                                 title="Click to verify this claim"
                             >
                                 {content}
@@ -884,7 +912,7 @@
             return (
                 <div className="h-screen bg-[#0F0F0F] flex flex-col overflow-hidden">
                     {/* Header */}
-                    <div className="px-6 py-3">
+                    <div className="px-3 py-2 md:px-6 md:py-3">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Shield />
@@ -924,8 +952,8 @@
                     {/* Main content area with chat and side panel */}
                     <div className="flex-1 flex overflow-hidden">
                         {/* Left Sidebar - Fraud Proof Tracker */}
-                        <div className={`w-80 flex flex-col transition-all duration-300 ${fraudProofStages ? 'opacity-100' : 'opacity-50'} backdrop-blur-xl bg-black/10`} style={{backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)'}}>
-                            <div className="p-4 border-b border-[#2D2D2D] sticky top-0 bg-black/10 backdrop-blur-md z-10">
+                        <div className={`${mobileActiveTab === 'fraud' ? 'fixed top-[44px] left-0 right-0 bottom-0 z-40 flex flex-col' : 'hidden'} md:relative md:top-auto md:left-auto md:right-auto md:bottom-auto md:flex md:w-80 md:flex-col transition-all duration-300 ${fraudProofStages ? 'opacity-100' : 'opacity-50'} backdrop-blur-xl bg-[#0F0F0F] md:bg-black/10`} style={{backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)'}}>
+                            <div className="p-4 border-b border-[#2D2D2D] sticky top-0 bg-[#0F0F0F] md:bg-black/10 backdrop-blur-md z-10">
                                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -1086,10 +1114,10 @@
                             </div>
 
                             {/* Bottom button */}
-                            <div className="p-3 border-t border-[#2D2D2D]">
+                            <div className="p-3 pb-20 md:pb-3 border-t border-[#2D2D2D]">
                                 <button
                                     onClick={() => setWhyModalOpen(true)}
-                                    className="w-full px-3 py-2 text-xs text-[#CC785C] bg-[#CC785C]/10 border border-[#CC785C]/30 rounded-lg hover:bg-[#CC785C]/20 transition-colors"
+                                    className="w-full px-3 py-3 md:py-2 text-xs text-[#CC785C] bg-[#CC785C]/10 border border-[#CC785C]/30 rounded-lg hover:bg-[#CC785C]/20 transition-colors"
                                 >
                                     Why I built this
                                 </button>
@@ -1097,12 +1125,12 @@
                         </div>
 
                         {/* Chat area */}
-                        <div className={`flex-1 flex flex-col transition-all duration-300 ${sidePanelOpen ? 'pr-96' : ''}`}>
+                        <div className={`flex-1 flex flex-col transition-all duration-300 ${sidePanelOpen ? 'md:pr-96' : ''} ${mobileActiveTab === 'fraud' ? 'hidden md:flex' : ''}`}>
                             {/* Messages */}
-                            <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
+                            <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-4 md:px-6">
                                 {messages.length === 0 ? (
                                     <div className="h-full flex items-center justify-center">
-                                        <div className="text-center max-w-2xl">
+                                        <div className="text-center max-w-full px-4 md:max-w-2xl md:px-0">
                                             <div className="mb-6">
                                                 <div className="inline-block p-4 bg-[#1E1E1E] rounded-full border border-[#3D3D3D] mb-4">
                                                     <Shield />
@@ -1116,15 +1144,15 @@
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="max-w-2xl mx-auto space-y-6">
+                                    <div className="max-w-full md:max-w-2xl mx-auto space-y-6">
                                         {messages.map(message => (
                                             <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                                 {message.role === 'user' ? (
-                                                    <div className="bg-[#CC785C] text-white rounded-2xl px-4 py-3 max-w-xl">
+                                                    <div className="bg-[#CC785C] text-white rounded-2xl px-4 py-3 max-w-[85%] md:max-w-xl">
                                                         {message.content}
                                                     </div>
                                                 ) : message.role === 'error' ? (
-                                                    <div className="bg-red-950/30 border border-red-800 text-red-400 rounded-2xl px-4 py-3 max-w-xl">
+                                                    <div className="bg-red-950/30 border border-red-800 text-red-400 rounded-2xl px-4 py-3 max-w-[85%] md:max-w-xl">
                                                         {message.content}
                                                     </div>
                                                 ) : (
@@ -1158,11 +1186,11 @@
                             </div>
 
                             {/* Input area */}
-                            <div className="bg-[#0F0F0F] p-6">
-                                <div className="max-w-2xl mx-auto">
+                            <div className="bg-[#0F0F0F] p-3 pb-20 md:p-6 md:pb-6">
+                                <div className="max-w-full md:max-w-2xl mx-auto">
                                     {/* Suggested prompts */}
                                     {messages.length === 0 && (
-                                        <div className="mb-4 flex flex-wrap gap-2 justify-center">
+                                        <div className="mb-4 flex flex-col gap-2 md:flex-row md:flex-wrap md:justify-center">
                                             {SUGGESTED_PROMPTS.map(suggestion => (
                                                 <button
                                                     key={suggestion}
@@ -1208,7 +1236,7 @@
                                                             setLoading(false);
                                                         }
                                                     }}
-                                                    className="text-sm px-3 py-1.5 bg-[#2D2D2D] hover:bg-[#3D3D3D] text-gray-300 border border-[#404040] rounded-lg transition"
+                                                    className="text-sm px-3 py-2.5 md:py-1.5 bg-[#2D2D2D] hover:bg-[#3D3D3D] text-gray-300 border border-[#404040] rounded-lg transition text-left"
                                                     disabled={loading || backendStatus.status !== 'connected'}
                                                 >
                                                     {suggestion}
@@ -1225,7 +1253,7 @@
                                             onChange={(e) => setPrompt(e.target.value)}
                                             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                                             placeholder="Ask anything and get verifiable facts"
-                                            className="flex-1 bg-transparent text-gray-100 placeholder-gray-500 outline-none py-2"
+                                            className="flex-1 bg-transparent text-gray-100 placeholder-gray-500 outline-none py-2 min-h-[44px] md:min-h-0"
                                             disabled={backendStatus.status !== 'connected' || loading}
                                             autoFocus
                                         />
@@ -1245,12 +1273,12 @@
                         </div>
 
                         {/* Side panel for verification */}
-                        <div className={`fixed right-0 top-[52px] bottom-0 w-96 transform transition-transform duration-300 ${sidePanelOpen ? 'translate-x-0' : 'translate-x-full'} overflow-y-auto backdrop-blur-xl bg-black/10 rounded-tl-2xl`} style={{backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)'}}>
-                            <div className="p-4 flex items-center justify-between sticky top-0 bg-black/10 backdrop-blur-md z-10">
+                        <div className={`fixed right-0 top-[44px] bottom-0 w-full bg-[#0F0F0F] z-[60] md:top-[52px] md:w-96 md:bg-black/10 md:z-auto md:rounded-tl-2xl transform transition-transform duration-300 ${sidePanelOpen ? 'translate-x-0' : 'translate-x-full'} overflow-y-auto overflow-x-hidden backdrop-blur-xl`} style={{backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)'}}>
+                            <div className="p-4 flex items-center justify-between sticky top-0 bg-[#0F0F0F] md:bg-black/10 backdrop-blur-md z-10">
                                 <h2 className="font-bold text-gray-100">🛡️ Verification</h2>
                                 <button
                                     onClick={handleCloseSidePanel}
-                                    className="text-gray-400 hover:text-gray-200 transition"
+                                    className="text-gray-400 hover:text-gray-200 transition p-2 -mr-2"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1259,7 +1287,7 @@
                             </div>
 
                             {selectedClaim && (
-                                <div className="p-4">
+                                <div className="p-4 pb-20 md:pb-4 min-w-0">
                                     <div className="mb-4 p-3 bg-[#2D2D2D] border border-[#404040] rounded-lg">
                                         <div className="text-xs text-gray-400 mb-1">Claim:</div>
                                         <div className="text-sm text-gray-100">{selectedClaim.text}</div>
@@ -1554,6 +1582,36 @@
                         </div>
                     </div>
 
+                    {/* Mobile bottom navigation */}
+                    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#1A1A1A] border-t border-[#2D2D2D] flex">
+                        <button
+                            onClick={() => { setMobileActiveTab('fraud'); setSidePanelOpen(false); }}
+                            className={`flex-1 flex flex-col items-center py-3 px-2 text-xs transition-colors ${
+                                mobileActiveTab === 'fraud'
+                                    ? 'text-[#CC785C]'
+                                    : 'text-gray-500'
+                            }`}
+                        >
+                            <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            Fraud Proof
+                        </button>
+                        <button
+                            onClick={() => { setMobileActiveTab('chat'); setSidePanelOpen(false); }}
+                            className={`flex-1 flex flex-col items-center py-3 px-2 text-xs transition-colors ${
+                                mobileActiveTab === 'chat'
+                                    ? 'text-[#CC785C]'
+                                    : 'text-gray-500'
+                            }`}
+                        >
+                            <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            Chat
+                        </button>
+                    </div>
+
                     {merkleModalOpen && merkleProofHashes && (
                         <MerkleProofModal
                             claimText={selectedClaim?.text}
@@ -1568,7 +1626,7 @@
                         <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setWhyModalOpen(false)}>
                             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
                             <div
-                                className="relative z-10 w-[480px] bg-[#1E1E1E] border border-[#3D3D3D] rounded-xl shadow-2xl overflow-hidden"
+                                className="relative z-10 w-full max-w-[480px] mx-4 max-h-[90vh] overflow-y-auto bg-[#1E1E1E] border border-[#3D3D3D] rounded-xl shadow-2xl overflow-hidden"
                                 onClick={e => e.stopPropagation()}
                             >
                                 <div className="flex items-center justify-between p-4 border-b border-[#2D2D2D]">
