@@ -75,6 +75,12 @@ class MerkleTree {
           hash: levelNodes[siblingIndex],
           position: isRightNode ? 'left' : 'right'
         });
+      } else {
+        // Odd node at end of level — paired with itself during tree build
+        proof.push({
+          hash: levelNodes[currentIndex],
+          position: 'right'
+        });
       }
 
       currentIndex = Math.floor(currentIndex / 2);

@@ -168,20 +168,22 @@ app.use((err, req, res, next) => {
 // START SERVER
 // ============================================================================
 
-app.listen(PORT, () => {
-  console.log('');
-  console.log('='.repeat(60));
-  console.log('🛡️  Verifiable Claude - API Server');
-  console.log('='.repeat(60));
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log('');
-  console.log('Endpoints:');
-  console.log('  POST /api/generate - Generate response with claims');
-  console.log('  POST /api/verify   - Verify a claim (fraud proof)');
-  console.log('  POST /api/cache/clear - Clear response cache');
-  console.log('='.repeat(60));
-  console.log('');
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log('');
+    console.log('='.repeat(60));
+    console.log('🛡️  Verifiable Claude - API Server');
+    console.log('='.repeat(60));
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+    console.log('');
+    console.log('Endpoints:');
+    console.log('  POST /api/generate - Generate response with claims');
+    console.log('  POST /api/verify   - Verify a claim (fraud proof)');
+    console.log('  POST /api/cache/clear - Clear response cache');
+    console.log('='.repeat(60));
+    console.log('');
+  });
+}
 
 module.exports = app;
