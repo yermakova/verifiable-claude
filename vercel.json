@@ -1,9 +1,9 @@
 {
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/((?!api|health).*)",
       "has": [{ "type": "host", "value": "verifiable-claude.vercel.app" }],
-      "destination": "https://verifiable-claude.yermakova.com/:path*",
+      "destination": "https://verifiable-claude.yermakova.com/$1",
       "permanent": true
     }
   ],
