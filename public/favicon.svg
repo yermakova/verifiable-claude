@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- upper left wing -->
+  <path d="M28 30 C24 20, 14 8, 6 14 C-2 20, 6 32, 28 34Z" fill="#5B8BD6" stroke="#2E3A5C" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- upper right wing -->
+  <path d="M36 30 C40 20, 50 8, 58 14 C66 20, 58 32, 36 34Z" fill="#5B8BD6" stroke="#2E3A5C" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- lower left wing -->
+  <path d="M28 34 C14 36, 4 44, 10 52 C16 58, 24 48, 28 38Z" fill="#5B8BD6" stroke="#2E3A5C" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- lower right wing -->
+  <path d="M36 34 C50 36, 60 44, 54 52 C48 58, 40 48, 36 38Z" fill="#5B8BD6" stroke="#2E3A5C" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- wing veins left upper -->
+  <path d="M28 32 C20 24, 12 18, 8 18" stroke="#2E3A5C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M28 32 C18 28, 10 26, 6 28" stroke="#2E3A5C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <!-- wing veins right upper -->
+  <path d="M36 32 C44 24, 52 18, 56 18" stroke="#2E3A5C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M36 32 C46 28, 54 26, 58 28" stroke="#2E3A5C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <!-- wing veins lower -->
+  <path d="M28 36 C20 40, 14 46, 12 50" stroke="#2E3A5C" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <path d="M36 36 C44 40, 50 46, 52 50" stroke="#2E3A5C" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <!-- body -->
+  <ellipse cx="32" cy="34" rx="3" ry="9" fill="#2E3A5C"/>
+  <!-- antennae -->
+  <path d="M30 26 C27 18, 22 12, 20 8" stroke="#2E3A5C" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M34 26 C37 18, 42 12, 44 8" stroke="#2E3A5C" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <circle cx="20" cy="8" r="2.5" fill="#2E3A5C"/>
+  <circle cx="44" cy="8" r="2.5" fill="#2E3A5C"/>
+</svg>
